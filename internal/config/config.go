@@ -40,6 +40,7 @@ type HubConfig struct {
 	TokenSecret     string
 	InternalSecret  string
 	PollHoldSeconds int
+	GlobalInFlight  int
 }
 
 type HubInputs struct {
@@ -47,6 +48,7 @@ type HubInputs struct {
 	TokenSecret     string
 	InternalSecret  string
 	PollHoldSeconds string
+	GlobalInFlight  string
 }
 
 func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
@@ -107,11 +109,17 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		return HubConfig{}, fmt.Errorf("parse poll hold seconds: %w", err)
 	}
 
+	globalInFlight, err := parseInt(firstNonEmpty(inputs.GlobalInFlight, os.Getenv("WEVE_BRIDGE_GLOBAL_IN_FLIGHT")), 64)
+	if err != nil {
+		return HubConfig{}, fmt.Errorf("parse global in-flight: %w", err)
+	}
+
 	return HubConfig{
 		ListenAddr:      listenAddr,
 		TokenSecret:     tokenSecret,
 		InternalSecret:  internalSecret,
 		PollHoldSeconds: pollHoldSeconds,
+		GlobalInFlight:  globalInFlight,
 	}, nil
 }
 
