@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/WeveHQ/weve-bridge/internal/config"
+	"github.com/WeveHQ/weve-bridge/internal/edge"
 )
 
 func runEdge(ctx context.Context, args []string) error {
-	_ = ctx
-
 	fs := flag.NewFlagSet("edge", flag.ContinueOnError)
 	token := fs.String("token", "", "bridge token")
 	hubURL := fs.String("hub-url", "", "hub base url")
@@ -26,5 +27,16 @@ func runEdge(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return fmt.Errorf("edge not implemented yet for bridge %s via %s", cfg.BridgeID, cfg.HubURL)
+	runContext, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	runner := edge.NewRunner(edge.Config{
+		Token:             cfg.Token,
+		HubURL:            cfg.HubURL,
+		PollConcurrency:   cfg.PollConcurrency,
+		HeartbeatInterval: time.Duration(cfg.HeartbeatSeconds) * time.Second,
+		PollTimeout:       time.Duration(cfg.PollTimeoutMS) * time.Millisecond,
+	})
+
+	return runner.Run(runContext)
 }
