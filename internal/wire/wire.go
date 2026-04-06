@@ -4,9 +4,10 @@ import "encoding/json"
 
 const (
 	MaxBodyBytes           = 8 * 1024 * 1024
-	PollPath               = "/poll"
-	HeartbeatPath          = "/heartbeat"
-	ResponsePathPrefix     = "/response/"
+	V1PathPrefix           = "/v1"
+	PollPath               = V1PathPrefix + "/poll"
+	HeartbeatPath          = V1PathPrefix + "/heartbeat"
+	ResponsePathPrefix     = V1PathPrefix + "/response/"
 	DispatchPathPrefix     = "/v1/dispatch/"
 	BridgeOfflineCode      = "bridge_offline"
 	BridgeRateLimitedCode  = "bridge_rate_limited"
