@@ -30,7 +30,7 @@ func TestParseHubConfigDefaultsListenAddr(t *testing.T) {
 	t.Parallel()
 
 	cfg, err := ParseHubConfig(HubInputs{
-		TokenSecret:    "token-secret",
+		VerifyTokenURL: "http://127.0.0.1:8181/verify",
 		InternalSecret: "internal-secret",
 	})
 	if err != nil {
@@ -39,5 +39,11 @@ func TestParseHubConfigDefaultsListenAddr(t *testing.T) {
 
 	if cfg.ListenAddr != ":8080" {
 		t.Fatalf("unexpected listen addr: %s", cfg.ListenAddr)
+	}
+	if cfg.VerifyTimeoutMS != 2000 {
+		t.Fatalf("unexpected verify timeout: %d", cfg.VerifyTimeoutMS)
+	}
+	if cfg.VerifyCacheSeconds != 30 {
+		t.Fatalf("unexpected verify cache seconds: %d", cfg.VerifyCacheSeconds)
 	}
 }

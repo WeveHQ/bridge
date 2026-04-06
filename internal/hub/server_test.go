@@ -5,21 +5,21 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/auth"
+	"github.com/WeveHQ/weve-bridge/internal/verifier"
 	"github.com/WeveHQ/weve-bridge/internal/wire"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestDispatchRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	server, token := newTestServer(t)
+	server, token := newTestServer()
 	testServer := httptest.NewServer(server.Handler())
 	defer testServer.Close()
 
@@ -74,7 +74,7 @@ func TestDispatchRoundTrip(t *testing.T) {
 func TestDispatchFailsWhenBridgeOffline(t *testing.T) {
 	t.Parallel()
 
-	server, _ := newTestServer(t)
+	server, _ := newTestServer()
 	testServer := httptest.NewServer(server.Handler())
 	defer testServer.Close()
 
@@ -107,7 +107,7 @@ func TestDispatchFailsWhenBridgeOffline(t *testing.T) {
 func TestDuplicateResponseIsIdempotent(t *testing.T) {
 	t.Parallel()
 
-	server, token := newTestServer(t)
+	server, token := newTestServer()
 	testServer := httptest.NewServer(server.Handler())
 	defer testServer.Close()
 
@@ -138,25 +138,52 @@ func TestDuplicateResponseIsIdempotent(t *testing.T) {
 	postResponse(t, testServer.URL, token, response)
 }
 
-func newTestServer(t *testing.T) (*Server, string) {
-	t.Helper()
-
-	now := time.Unix(1_700_000_000, 0).UTC()
-	token, err := auth.SignBridgeToken([]byte("token-secret"), auth.BridgeClaims{
-		TenantID:         "tenant_123",
-		BridgeID:         "bridge_123",
-		RegisteredClaims: registeredClaims(now),
-	})
-	if err != nil {
-		t.Fatalf("sign bridge token: %v", err)
-	}
+func TestAuthenticateEdgeReturnsServiceUnavailableWhenVerifierFails(t *testing.T) {
+	t.Parallel()
 
 	server := NewServer(Config{
-		TokenSecret:    []byte("token-secret"),
+		TokenVerifier:  staticVerifier{err: errors.New("boom")},
 		InternalSecret: "internal-secret",
 		PollHold:       100 * time.Millisecond,
 		GlobalInFlight: 8,
-		Now:            func() time.Time { return now },
+	})
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	request, err := http.NewRequest(http.MethodPost, testServer.URL+wire.HeartbeatPath, bytes.NewReader(wire.MustJSON(wire.HeartbeatRequest{
+		BridgeVersion: "dev",
+	})))
+	if err != nil {
+		t.Fatalf("create heartbeat request: %v", err)
+	}
+	request.Header.Set(authorizationHeader, "Bearer bridge-token")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("heartbeat request failed: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("unexpected status code: %d", response.StatusCode)
+	}
+}
+
+func newTestServer() (*Server, string) {
+	token := "bridge-token"
+	server := NewServer(Config{
+		TokenVerifier: staticVerifier{
+			claimsByToken: map[string]verifier.Claims{
+				token: {
+					TenantID: "tenant_123",
+					BridgeID: "bridge_123",
+				},
+			},
+		},
+		InternalSecret: "internal-secret",
+		PollHold:       100 * time.Millisecond,
+		GlobalInFlight: 8,
+		Now:            func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
 	})
 
 	return server, token
@@ -260,10 +287,20 @@ func postHeartbeat(t *testing.T, baseURL string, token string) {
 	}
 }
 
-func registeredClaims(now time.Time) jwt.RegisteredClaims {
-	return jwt.RegisteredClaims{
-		IssuedAt:  jwt.NewNumericDate(now),
-		NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),
-		ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+type staticVerifier struct {
+	claimsByToken map[string]verifier.Claims
+	err           error
+}
+
+func (stub staticVerifier) Verify(_ context.Context, token string) (verifier.Claims, error) {
+	if stub.err != nil {
+		return verifier.Claims{}, stub.err
 	}
+
+	claims, ok := stub.claimsByToken[token]
+	if !ok {
+		return verifier.Claims{}, verifier.ErrInvalidToken
+	}
+
+	return claims, nil
 }

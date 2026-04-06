@@ -10,6 +10,7 @@ import (
 
 	"github.com/WeveHQ/weve-bridge/internal/config"
 	"github.com/WeveHQ/weve-bridge/internal/hub"
+	"github.com/WeveHQ/weve-bridge/internal/verifier"
 )
 
 func runHub(ctx context.Context, args []string) error {
@@ -26,8 +27,19 @@ func runHub(ctx context.Context, args []string) error {
 		return err
 	}
 
+	tokenVerifier, err := verifier.NewClient(verifier.Config{
+		URL:      cfg.VerifyTokenURL,
+		CacheTTL: time.Duration(cfg.VerifyCacheSeconds) * time.Second,
+		Client: &http.Client{
+			Timeout: time.Duration(cfg.VerifyTimeoutMS) * time.Millisecond,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
 	server := hub.NewServer(hub.Config{
-		TokenSecret:    []byte(cfg.TokenSecret),
+		TokenVerifier:  tokenVerifier,
 		InternalSecret: cfg.InternalSecret,
 		PollHold:       time.Duration(cfg.PollHoldSeconds) * time.Second,
 		GlobalInFlight: cfg.GlobalInFlight,

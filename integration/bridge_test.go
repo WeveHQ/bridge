@@ -15,9 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/auth"
 	"github.com/WeveHQ/weve-bridge/internal/wire"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestBridgeBinaryDispatchesRequests(t *testing.T) {
@@ -39,11 +37,12 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	defer target.Close()
 
 	binaryPath := buildBinary(t)
-	token := signBridgeToken(t)
+	token := "bridge-token"
 	hubAddr := freeAddr(t)
+	verifyURL := startVerifier(t, token)
 
 	hubCmd := startProcess(t, binaryPath, []string{"hub", "--listen=" + hubAddr}, []string{
-		"WEVE_BRIDGE_TOKEN_SECRET=token-secret",
+		"WEVE_BRIDGE_VERIFY_TOKEN_URL=" + verifyURL,
 		"WEVE_BRIDGE_INTERNAL_SECRET=internal-secret",
 		"WEVE_BRIDGE_POLL_HOLD_SECONDS=1",
 		"WEVE_BRIDGE_GLOBAL_IN_FLIGHT=8",
@@ -100,24 +99,24 @@ func buildBinary(t *testing.T) string {
 	return outputPath
 }
 
-func signBridgeToken(t *testing.T) string {
+func startVerifier(t *testing.T, token string) string {
 	t.Helper()
 
-	now := time.Now().UTC()
-	token, err := auth.SignBridgeToken([]byte("token-secret"), auth.BridgeClaims{
-		TenantID: "tenant_123",
-		BridgeID: "bridge_123",
-		RegisteredClaims: jwt.RegisteredClaims{
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-		},
-	})
-	if err != nil {
-		t.Fatalf("sign token: %v", err)
-	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if request.Header.Get("Authorization") != "Bearer "+token {
+			http.Error(writer, "invalid token", http.StatusUnauthorized)
+			return
+		}
 
-	return token
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"tenantId":"tenant_123","bridgeId":"bridge_123"}`))
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
 }
 
 func freeAddr(t *testing.T) string {

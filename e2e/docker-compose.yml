@@ -5,12 +5,15 @@ services:
       dockerfile: Dockerfile
     command: ["hub", "--listen=:8080"]
     environment:
-      WEVE_BRIDGE_TOKEN_SECRET: token-secret
+      WEVE_BRIDGE_VERIFY_TOKEN_URL: http://verifier:8081/verify
       WEVE_BRIDGE_INTERNAL_SECRET: internal-secret
       WEVE_BRIDGE_POLL_HOLD_SECONDS: "1"
       WEVE_BRIDGE_GLOBAL_IN_FLIGHT: "8"
     ports:
       - "${WEVE_BRIDGE_HUB_PORT}:8080"
+    depends_on:
+      verifier:
+        condition: service_healthy
 
   edge:
     build:
@@ -29,8 +32,30 @@ services:
     depends_on:
       hub:
         condition: service_started
+      verifier:
+        condition: service_healthy
       target:
         condition: service_healthy
+
+  verifier:
+    image: python:3.12-alpine
+    working_dir: /app
+    environment:
+      WEVE_BRIDGE_TOKEN: ${WEVE_BRIDGE_TOKEN}
+      WEVE_BRIDGE_BRIDGE_ID: bridge_123
+      WEVE_BRIDGE_TENANT_ID: tenant_123
+    volumes:
+      - ./verifier.py:/app/verifier.py:ro
+    command: ["python", "/app/verifier.py"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; request=urllib.request.Request('http://127.0.0.1:8081/verify', method='POST'); request.add_header('Authorization', 'Bearer ' + __import__('os').environ['WEVE_BRIDGE_TOKEN']); urllib.request.urlopen(request).read()\""
+        ]
+      interval: 1s
+      timeout: 2s
+      retries: 10
 
   target:
     image: python:3.12-alpine

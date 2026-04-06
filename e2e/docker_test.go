@@ -17,9 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/auth"
 	"github.com/WeveHQ/weve-bridge/internal/wire"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestDockerComposeRoundTrip(t *testing.T) {
@@ -32,7 +30,7 @@ func TestDockerComposeRoundTrip(t *testing.T) {
 
 	projectName := "weve-bridge-" + fmt.Sprint(time.Now().UnixNano())
 	hubPort := allocatePort(t)
-	token := signToken(t)
+	token := "bridge-token"
 
 	runCompose(t, projectName, hubPort, token, "up", "-d", "--build")
 	defer runCompose(t, projectName, hubPort, token, "down", "-v", "--remove-orphans")
@@ -213,26 +211,6 @@ func dispatchOnce(
 	}
 
 	return wire.HttpResponse{}, &reject, errors.New(reject.Error.Code)
-}
-
-func signToken(t *testing.T) string {
-	t.Helper()
-
-	now := time.Now().UTC()
-	token, err := auth.SignBridgeToken([]byte("token-secret"), auth.BridgeClaims{
-		TenantID: "tenant_123",
-		BridgeID: "bridge_123",
-		RegisteredClaims: jwt.RegisteredClaims{
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-		},
-	})
-	if err != nil {
-		t.Fatalf("sign token: %v", err)
-	}
-
-	return token
 }
 
 func allocatePort(t *testing.T) int {

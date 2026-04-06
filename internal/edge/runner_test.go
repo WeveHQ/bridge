@@ -11,10 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/auth"
 	"github.com/WeveHQ/weve-bridge/internal/hub"
+	"github.com/WeveHQ/weve-bridge/internal/verifier"
 	"github.com/WeveHQ/weve-bridge/internal/wire"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestExecuteRequestSuccess(t *testing.T) {
@@ -85,17 +84,17 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 	defer target.Close()
 
 	now := time.Unix(1_700_000_000, 0).UTC()
-	token, err := auth.SignBridgeToken([]byte("token-secret"), auth.BridgeClaims{
-		TenantID:         "tenant_123",
-		BridgeID:         "bridge_123",
-		RegisteredClaims: jwtRegisteredClaims(now),
-	})
-	if err != nil {
-		t.Fatalf("sign bridge token: %v", err)
-	}
+	token := "bridge-token"
 
 	hubServer := hub.NewServer(hub.Config{
-		TokenSecret:    []byte("token-secret"),
+		TokenVerifier: staticVerifier{
+			claimsByToken: map[string]verifier.Claims{
+				token: {
+					TenantID: "tenant_123",
+					BridgeID: "bridge_123",
+				},
+			},
+		},
 		InternalSecret: "internal-secret",
 		PollHold:       200 * time.Millisecond,
 		GlobalInFlight: 8,
@@ -186,10 +185,15 @@ func waitForHeartbeat(t *testing.T, baseURL string, token string) {
 	t.Fatal("timed out waiting for heartbeat")
 }
 
-func jwtRegisteredClaims(now time.Time) jwt.RegisteredClaims {
-	return jwt.RegisteredClaims{
-		IssuedAt:  jwt.NewNumericDate(now),
-		NotBefore: jwt.NewNumericDate(now.Add(-time.Minute)),
-		ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+type staticVerifier struct {
+	claimsByToken map[string]verifier.Claims
+}
+
+func (stub staticVerifier) Verify(_ context.Context, token string) (verifier.Claims, error) {
+	claims, ok := stub.claimsByToken[token]
+	if !ok {
+		return verifier.Claims{}, verifier.ErrInvalidToken
 	}
+
+	return claims, nil
 }

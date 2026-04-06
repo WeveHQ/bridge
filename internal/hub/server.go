@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/auth"
 	"github.com/WeveHQ/weve-bridge/internal/build"
+	"github.com/WeveHQ/weve-bridge/internal/verifier"
 	"github.com/WeveHQ/weve-bridge/internal/wire"
 )
 
@@ -25,7 +25,7 @@ const (
 )
 
 type Config struct {
-	TokenSecret    []byte
+	TokenVerifier  verifier.TokenVerifier
 	InternalSecret string
 	PollHold       time.Duration
 	GlobalInFlight int
@@ -34,7 +34,7 @@ type Config struct {
 
 type Server struct {
 	now            func() time.Time
-	tokenSecret    []byte
+	tokenVerifier  verifier.TokenVerifier
 	internalSecret string
 	pollHold       time.Duration
 	globalInFlight int
@@ -66,6 +66,10 @@ type dispatchResult struct {
 }
 
 func NewServer(cfg Config) *Server {
+	if cfg.TokenVerifier == nil {
+		panic("missing token verifier")
+	}
+
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
@@ -73,7 +77,7 @@ func NewServer(cfg Config) *Server {
 
 	return &Server{
 		now:            now,
-		tokenSecret:    cfg.TokenSecret,
+		tokenVerifier:  cfg.TokenVerifier,
 		internalSecret: cfg.InternalSecret,
 		pollHold:       cfg.PollHold,
 		globalInFlight: cfg.GlobalInFlight,
@@ -256,22 +260,31 @@ func (server *Server) handleDispatch(writer http.ResponseWriter, request *http.R
 	writeReject(writer, statusCode, code, message)
 }
 
-func (server *Server) authenticateEdge(writer http.ResponseWriter, request *http.Request) (auth.BridgeClaims, bool) {
+func (server *Server) authenticateEdge(writer http.ResponseWriter, request *http.Request) (verifier.Claims, bool) {
 	if request.Method != http.MethodPost {
 		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
-		return auth.BridgeClaims{}, false
+		return verifier.Claims{}, false
 	}
 
 	header := request.Header.Get(authorizationHeader)
 	if !strings.HasPrefix(header, "Bearer ") {
 		http.Error(writer, "missing bearer token", http.StatusUnauthorized)
-		return auth.BridgeClaims{}, false
+		return verifier.Claims{}, false
 	}
 
-	claims, err := auth.ParseBridgeToken(server.tokenSecret, strings.TrimPrefix(header, "Bearer "), server.now())
+	claims, err := server.tokenVerifier.Verify(request.Context(), strings.TrimPrefix(header, "Bearer "))
 	if err != nil {
+		if errors.Is(err, verifier.ErrInvalidToken) {
+			http.Error(writer, "invalid token", http.StatusUnauthorized)
+			return verifier.Claims{}, false
+		}
+
+		http.Error(writer, "token verifier unavailable", http.StatusServiceUnavailable)
+		return verifier.Claims{}, false
+	}
+	if claims.BridgeID == "" {
 		http.Error(writer, "invalid token", http.StatusUnauthorized)
-		return auth.BridgeClaims{}, false
+		return verifier.Claims{}, false
 	}
 
 	return claims, true
