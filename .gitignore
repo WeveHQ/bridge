@@ -2,3 +2,5 @@
 /dist
 /tmp
 /bin
+.vscode
+.history
