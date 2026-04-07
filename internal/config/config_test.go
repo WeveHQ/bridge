@@ -8,8 +8,6 @@ func TestParseEdgeConfig(t *testing.T) {
 	cfg, err := ParseEdgeConfig(EdgeInputs{
 		Token:            "token",
 		HubURL:           "https://hub.example",
-		BridgeID:         "bridge_123",
-		TenantID:         "tenant_123",
 		PollConcurrency:  "6",
 		HeartbeatSeconds: "10",
 		PollTimeoutMS:    "15000",

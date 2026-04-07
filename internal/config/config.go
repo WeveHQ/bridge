@@ -20,8 +20,6 @@ const (
 type EdgeConfig struct {
 	Token            string
 	HubURL           string
-	BridgeID         string
-	TenantID         string
 	PollConcurrency  int
 	HeartbeatSeconds int
 	PollTimeoutMS    int
@@ -30,8 +28,6 @@ type EdgeConfig struct {
 type EdgeInputs struct {
 	Token            string
 	HubURL           string
-	BridgeID         string
-	TenantID         string
 	PollConcurrency  string
 	HeartbeatSeconds string
 	PollTimeoutMS    string
@@ -86,8 +82,6 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 	return EdgeConfig{
 		Token:            token,
 		HubURL:           strings.TrimRight(hubURL, "/"),
-		BridgeID:         firstNonEmpty(inputs.BridgeID, os.Getenv("WEVE_BRIDGE_ID")),
-		TenantID:         firstNonEmpty(inputs.TenantID, os.Getenv("WEVE_TENANT_ID")),
 		PollConcurrency:  pollConcurrency,
 		HeartbeatSeconds: heartbeatSeconds,
 		PollTimeoutMS:    pollTimeoutMS,
@@ -160,6 +154,5 @@ func firstNonEmpty(values ...string) string {
 			return value
 		}
 	}
-
 	return ""
 }

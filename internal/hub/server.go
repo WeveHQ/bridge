@@ -190,12 +190,19 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	if server.completeResponse(response) {
+	server.mu.Lock()
+	if dispatch, ok := server.inFlight[outboundTraceID]; ok {
+		delete(server.inFlight, outboundTraceID)
+		server.completed[outboundTraceID] = server.now()
+		server.mu.Unlock()
+		dispatch.result <- dispatchResult{response: &response}
 		writer.WriteHeader(http.StatusOK)
 		return
 	}
+	_, alreadyCompleted := server.completed[outboundTraceID]
+	server.mu.Unlock()
 
-	if server.wasCompleted(outboundTraceID) {
+	if alreadyCompleted {
 		writer.WriteHeader(http.StatusOK)
 		return
 	}
@@ -424,21 +431,6 @@ func (server *Server) cancelPendingDispatch(outboundTraceID string) bool {
 	return false
 }
 
-func (server *Server) completeResponse(response wire.HttpResponse) bool {
-	server.mu.Lock()
-	defer server.mu.Unlock()
-
-	dispatch, ok := server.inFlight[response.OutboundTraceID]
-	if !ok {
-		return false
-	}
-
-	delete(server.inFlight, response.OutboundTraceID)
-	server.completed[response.OutboundTraceID] = server.now()
-	dispatch.result <- dispatchResult{response: &response}
-	return true
-}
-
 func (server *Server) completeWithReject(outboundTraceID string, code string, message string) bool {
 	server.mu.Lock()
 	defer server.mu.Unlock()
@@ -459,13 +451,6 @@ func (server *Server) completeWithReject(outboundTraceID string, code string, me
 		},
 	}
 	return true
-}
-
-func (server *Server) wasCompleted(outboundTraceID string) bool {
-	server.mu.Lock()
-	defer server.mu.Unlock()
-	_, ok := server.completed[outboundTraceID]
-	return ok
 }
 
 func (server *Server) removeInFlight(outboundTraceID string) {

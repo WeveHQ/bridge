@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -169,8 +170,8 @@ func (runner *Runner) sendHeartbeat(ctx context.Context) error {
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, runner.hubURL+wire.HeartbeatPath, bytes.NewReader(wire.MustJSON(wire.HeartbeatRequest{
 		BridgeVersion: build.Version,
-		OS:            runtimeOS(),
-		Arch:          runtimeArch(),
+		OS:            runtime.GOOS,
+		Arch:          runtime.GOARCH,
 		UptimeSec:     uint64(time.Since(runner.startedAt).Seconds()),
 		InFlight:      uint32(runner.inFlight.Load()),
 		Hostname:      hostname,

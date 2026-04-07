@@ -21,7 +21,7 @@ func runHub(ctx context.Context, args []string) error {
 	}
 
 	cfg, err := config.ParseHubConfig(config.HubInputs{
-		ListenAddr: firstNonEmpty(*listenAddr, ""),
+		ListenAddr: *listenAddr,
 	})
 	if err != nil {
 		return err

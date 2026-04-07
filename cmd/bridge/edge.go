@@ -20,8 +20,8 @@ func runEdge(ctx context.Context, args []string) error {
 	}
 
 	cfg, err := config.ParseEdgeConfig(config.EdgeInputs{
-		Token:  firstNonEmpty(*token, ""),
-		HubURL: firstNonEmpty(*hubURL, ""),
+		Token:  *token,
+		HubURL: *hubURL,
 	})
 	if err != nil {
 		return err

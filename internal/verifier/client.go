@@ -85,7 +85,7 @@ func (client *Client) Verify(ctx context.Context, token string) (Claims, error) 
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, client.url, nil)
 	if err != nil {
-		return Claims{}, fmt.Errorf("create verifier request: %w", err)
+		return Claims{}, err
 	}
 	request.Header.Set("Authorization", "Bearer "+token)
 
