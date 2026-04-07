@@ -1,13 +1,146 @@
-# weve-bridge
+# weve/bridge
 
-Single Go binary with `edge` and `hub` subcommands.
+**Egress-only, zero-dependency agent to plug private data sources into Weve.**
 
-## Commands
+<div>
+[CI](https://github.com/WeveHQ/weve-bridge/actions)
+[Release](https://github.com/WeveHQ/weve-bridge/releases)
+[Go](go.mod)
+[Image](https://github.com/WeveHQ/weve-bridge/pkgs/container/weve-bridge)
+[Signed](https://github.com/WeveHQ/weve-bridge/releases)
+[SLSA](https://slsa.dev)
+[SBOM](https://github.com/WeveHQ/weve-bridge/releases)
+[License](LICENSE)
+</div>
+
+---
+
+## What?
+
+Weve Bridge connects the Weve SaaS Cloud to data sources inside your network.
+
+Run a single Go container on your network. It dials out to Weve over HTTPS/443 and waits. When Weve needs to query one of your private targets, the request travels back down that outbound connection. No inbound firewall rules.
+
+Very slim, zero dependencies, ~10 MB static binary.
+
+## How?
+
+1. Edge dials out to Weve on 443 and parks long-polls.
+2. When Weve dispatches a request, the hub hands it down an already-open poll.
+3. Edge executes the HTTP call against your internal target.
+4. Response travels back up the same path.
+
+Scoped to HTTP request/responses only. This NOT a VPN and NOT a SOCKS tunnel. Weve can only reach targets that are on your allow-list.
+
+## Requirements
+
+- Linux container runtime (Docker, Kubernetes, ECS, Nomad) or a Linux host
+- Outbound HTTPS/443 to `*.weve.security`
+- An enrollment token from the Weve dashboard
+- Optional: corporate proxy via `HTTPS_PROXY`, custom CA via `SSL_CERT_FILE`
+
+Runs as a non-root UID. No privileged capabilities needed.
+
+## Enroll
+
+1. In the Weve dashboard, open **Settings → Bridges → New bridge**.
+2. Copy the enrollment token.
+3. Set `WEVE_BRIDGE_TOKEN`, `WEVE_BRIDGE_URL` and start the container.
+4. The dashboard shows the bridge as `connected` within 60 seconds.
+
+Tokens are scoped to your tenant and a single bridge. Treat them as secrets.
+
+## Install
+
+### Docker
 
 ```bash
-go test ./...
-go test -tags=docker ./e2e
-go test -tags=integration ./...
-go run ./cmd/bridge edge
-go run ./cmd/bridge hub
+docker run -d --name weve-bridge \
+  -e WEVE_BRIDGE_TOKEN=$WEVE_BRIDGE_TOKEN \
+  -e WEVE_BRIDGE_URL=$WEVE_BRIDGE_URL \
+  -e WEVE_BRIDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal \
+  ghcr.io/wevehq/weve-bridge:latest edge
 ```
+
+### Binary
+
+Download from [Releases](https://github.com/WeveHQ/weve-bridge/releases).
+
+> Optionally, you can verify the cosign signature and SLSA attestation before running.
+
+```bash
+cosign verify-blob \
+  --certificate weve-bridge_linux_amd64.pem \
+  --signature weve-bridge_linux_amd64.sig \
+  weve-bridge_linux_amd64
+
+./weve-bridge edge
+```
+
+### Compiling from source
+
+Requires Go 1.26+. Clone and build the `bridge` command:
+
+```bash
+git clone https://github.com/WeveHQ/weve-bridge.git
+cd weve-bridge
+go build -o weve-bridge ./cmd/bridge
+
+./weve-bridge edge
+```
+
+Cross-compile for Linux from any host by setting `GOOS=linux GOARCH=amd64` (or `arm64`).
+
+## Configure
+
+All configuration is through environment variables.
+
+| Variable                       | Required | Default | Purpose                                           |
+| ------------------------------ | -------- | ------- | ------------------------------------------------- |
+| `WEVE_BRIDGE_TOKEN`            | yes      | —       | Enrollment token from the Weve dashboard          |
+| `WEVE_BRIDGE_URL`              | yes      | —       | Bridge endpoint for your tenant (from dashboard)  |
+| `WEVE_BRIDGE_ALLOWED_HOSTS`    | no       | —       | Comma-separated internal host allow-list          |
+| `WEVE_BRIDGE_POLL_CONCURRENCY` | no       | `4`     | Concurrent in-flight requests this edge handles   |
+| `WEVE_BRIDGE_LOG_LEVEL`        | no       | `info`  | `debug` / `info` / `warn` / `error`               |
+| `WEVE_BRIDGE_LOG_FORMAT`       | no       | `json`  | `json` / `text`                                   |
+| `HTTPS_PROXY`                  | no       | —       | Corporate egress proxy                            |
+| `NO_PROXY`                     | no       | —       | Proxy bypass list                                 |
+| `SSL_CERT_FILE`                | no       | —       | Custom CA bundle for TLS-intercepting middleboxes |
+
+### Allow-list
+
+`WEVE_BRIDGE_ALLOWED_HOSTS` optional, but recommended (defense in depth). Any request whose target host is not on this list is rejected by the edge before it hits the network. Weve Cloud cannot bypass it. Leave it unset to allow all.
+
+```bash
+WEVE_BRIDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal,jira.corp.internal
+```
+
+### Corporate proxy
+
+`HTTPS_PROXY` and `NO_PROXY` are honored via the Go stdlib. No extra configuration needed.
+
+### TLS interception
+
+Point `SSL_CERT_FILE` at your CA bundle. The edge does not pin certificates — you can MITM it.
+
+## Troubleshooting
+
+| Symptom                                 | Likely cause                                 |
+| --------------------------------------- | -------------------------------------------- |
+| `edge failed to connect: tls handshake` | TLS-intercepting proxy — set `SSL_CERT_FILE` |
+| `407 proxy authentication required`     | `HTTPS_PROXY` missing credentials            |
+| `host not allowed: <host>`              | Target not in `WEVE_BRIDGE_ALLOWED_HOSTS`    |
+| `token invalid`                         | Token for the wrong environment, or revoked  |
+| Dashboard shows `disconnected`          | Outbound 443 blocked, or edge killed         |
+| `minimum version required`              | Upgrade the image                            |
+
+Run with `WEVE_BRIDGE_LOG_LEVEL=debug` for verbose diagnostics.
+
+## Support
+
+- Status: [https://status.weve.security](https://status.weve.security)
+- Support: `engineering@weve.security`
+
+## License
+
+[Apache 2.0](LICENSE)
