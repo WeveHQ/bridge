@@ -1,0 +1,8 @@
+FROM alpine:3.22
+
+RUN adduser -D -u 10001 bridge
+USER bridge
+
+COPY weve-bridge /usr/local/bin/weve-bridge
+
+ENTRYPOINT ["weve-bridge"]

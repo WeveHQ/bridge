@@ -1,0 +1,120 @@
+version: 2
+
+project_name: weve-bridge
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: weve-bridge
+    main: ./cmd/bridge
+    binary: weve-bridge
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.CommitDate}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: weve-bridge
+    ids:
+      - weve-bridge
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+dockers:
+  - id: weve-bridge-amd64
+    ids:
+      - weve-bridge
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/wevehq/weve-bridge:{{ .Version }}-amd64"
+    dockerfile: Dockerfile.release
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.source=https://github.com/WeveHQ/weve-bridge"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .CommitDate }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Weve Bridge edge/hub"
+
+  - id: weve-bridge-arm64
+    ids:
+      - weve-bridge
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/wevehq/weve-bridge:{{ .Version }}-arm64"
+    dockerfile: Dockerfile.release
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.source=https://github.com/WeveHQ/weve-bridge"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.created={{ .CommitDate }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Weve Bridge edge/hub"
+
+docker_manifests:
+  - name_template: "ghcr.io/wevehq/weve-bridge:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/wevehq/weve-bridge:{{ .Version }}-amd64"
+      - "ghcr.io/wevehq/weve-bridge:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/wevehq/weve-bridge:latest"
+    image_templates:
+      - "ghcr.io/wevehq/weve-bridge:{{ .Version }}-amd64"
+      - "ghcr.io/wevehq/weve-bridge:{{ .Version }}-arm64"
+
+release:
+  github:
+    owner: WeveHQ
+    name: weve-bridge
+  draft: false
+  prerelease: auto
+  mode: replace
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
