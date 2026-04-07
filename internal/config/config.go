@@ -59,9 +59,9 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_TOKEN")
 	}
 
-	hubURL := firstNonEmpty(inputs.HubURL, os.Getenv("WEVE_BRIDGE_HUB_URL"))
+	hubURL := firstNonEmpty(inputs.HubURL, os.Getenv("WEVE_BRIDGE_URL"))
 	if hubURL == "" {
-		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_HUB_URL")
+		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_URL")
 	}
 
 	pollConcurrency, err := parseInt(firstNonEmpty(inputs.PollConcurrency, os.Getenv("WEVE_BRIDGE_POLL_CONCURRENCY")), defaultPollConcurrency)
