@@ -61,6 +61,42 @@ sboms:
       - "--output"
       - "cyclonedx-json=$document"
 
+signs:
+  - id: archives
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+    artifacts: archive
+    output: true
+  - id: checksums
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - "sign-blob"
+      - "--yes"
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+    artifacts: checksum
+    output: true
+
+docker_signs:
+  - id: images
+    cmd: cosign
+    args:
+      - "sign"
+      - "--yes"
+      - "${artifact}@${digest}"
+    artifacts: manifests
+    output: true
+
 dockers:
   - id: weve-bridge-amd64
     ids:
