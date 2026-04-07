@@ -50,6 +50,17 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+sboms:
+  - id: archive
+    artifacts: archive
+    documents:
+      - "${artifact}.sbom.cdx.json"
+    cmd: syft
+    args:
+      - "$artifact"
+      - "--output"
+      - "cyclonedx-json=$document"
+
 dockers:
   - id: weve-bridge-amd64
     ids:
