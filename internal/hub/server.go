@@ -17,16 +17,16 @@ import (
 )
 
 const (
-	internalSecretHeader = "X-Internal-Secret"
-	authorizationHeader  = "Authorization"
-	heartbeatTTL         = 30 * time.Second
-	parkGrace            = 2 * time.Second
-	completedTTL         = 2 * time.Minute
+	bridgeHubSecretHeader = "X-Bridge-Hub-Secret"
+	authorizationHeader   = "Authorization"
+	heartbeatTTL          = 30 * time.Second
+	parkGrace             = 2 * time.Second
+	completedTTL          = 2 * time.Minute
 )
 
 type Config struct {
 	TokenVerifier  verifier.TokenVerifier
-	InternalSecret string
+	HubSecret      string
 	PollHold       time.Duration
 	GlobalInFlight int
 	Now            func() time.Time
@@ -35,7 +35,7 @@ type Config struct {
 type Server struct {
 	now            func() time.Time
 	tokenVerifier  verifier.TokenVerifier
-	internalSecret string
+	hubSecret      string
 	pollHold       time.Duration
 	globalInFlight int
 
@@ -78,7 +78,7 @@ func NewServer(cfg Config) *Server {
 	return &Server{
 		now:            now,
 		tokenVerifier:  cfg.TokenVerifier,
-		internalSecret: cfg.InternalSecret,
+		hubSecret:      cfg.HubSecret,
 		pollHold:       cfg.PollHold,
 		globalInFlight: cfg.GlobalInFlight,
 		bridges:        map[string]*bridgeState{},
@@ -211,7 +211,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 }
 
 func (server *Server) handleDispatch(writer http.ResponseWriter, request *http.Request) {
-	if request.Header.Get(internalSecretHeader) != server.internalSecret {
+	if request.Header.Get(bridgeHubSecretHeader) != server.hubSecret {
 		http.Error(writer, "unauthorized", http.StatusUnauthorized)
 		return
 	}

@@ -30,7 +30,7 @@ func TestParseHubConfigDefaultsListenAddr(t *testing.T) {
 	cfg, err := ParseHubConfig(HubInputs{
 		TokenVerifierURL:    "http://127.0.0.1:8181/verify",
 		TokenVerifierSecret: "verifier-secret",
-		InternalSecret:      "internal-secret",
+		HubSecret:           "internal-secret",
 	})
 	if err != nil {
 		t.Fatalf("parse hub config: %v", err)

@@ -41,7 +41,7 @@ func runHub(ctx context.Context, args []string) error {
 
 	server := hub.NewServer(hub.Config{
 		TokenVerifier:  tokenVerifier,
-		InternalSecret: cfg.InternalSecret,
+		HubSecret:      cfg.HubSecret,
 		PollHold:       time.Duration(cfg.PollHoldSeconds) * time.Second,
 		GlobalInFlight: cfg.GlobalInFlight,
 	})

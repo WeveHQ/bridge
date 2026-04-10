@@ -45,7 +45,7 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	hubCmd := startProcess(t, binaryPath, []string{"hub", "--listen=" + hubAddr}, []string{
 		"WEVE_BRIDGE_TOKEN_VERIFIER_URL=" + verifyURL,
 		"WEVE_BRIDGE_TOKEN_VERIFIER_SECRET=verifier-secret",
-		"WEVE_BRIDGE_INTERNAL_SECRET=internal-secret",
+		"WEVE_BRIDGE_HUB_SECRET=internal-secret",
 		"WEVE_BRIDGE_POLL_HOLD_SECONDS=1",
 		"WEVE_BRIDGE_GLOBAL_IN_FLIGHT=8",
 	})
@@ -212,7 +212,7 @@ func dispatchOnce(baseURL string, payload wire.DispatchRequest) (wire.HttpRespon
 	if err != nil {
 		return wire.HttpResponse{}, nil, err
 	}
-	request.Header.Set("X-Internal-Secret", "internal-secret")
+	request.Header.Set("X-Bridge-Hub-Secret", "internal-secret")
 
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {

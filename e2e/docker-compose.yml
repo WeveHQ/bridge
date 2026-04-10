@@ -7,7 +7,7 @@ services:
     environment:
       WEVE_BRIDGE_TOKEN_VERIFIER_URL: http://verifier:8081/verify
       WEVE_BRIDGE_TOKEN_VERIFIER_SECRET: verifier-secret
-      WEVE_BRIDGE_INTERNAL_SECRET: internal-secret
+      WEVE_BRIDGE_HUB_SECRET: internal-secret
       WEVE_BRIDGE_POLL_HOLD_SECONDS: "1"
       WEVE_BRIDGE_GLOBAL_IN_FLIGHT: "8"
     ports:

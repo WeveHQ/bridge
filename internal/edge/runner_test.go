@@ -95,7 +95,7 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 				},
 			},
 		},
-		InternalSecret: "internal-secret",
+		HubSecret:      "internal-secret",
 		PollHold:       200 * time.Millisecond,
 		GlobalInFlight: 8,
 		Now:            func() time.Time { return now },
@@ -132,7 +132,7 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create dispatch request: %v", err)
 	}
-	request.Header.Set("X-Internal-Secret", "internal-secret")
+	request.Header.Set("X-Bridge-Hub-Secret", "internal-secret")
 
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {

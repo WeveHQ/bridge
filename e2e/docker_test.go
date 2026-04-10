@@ -185,7 +185,7 @@ func dispatchOnce(
 	if err != nil {
 		return wire.HttpResponse{}, nil, err
 	}
-	request.Header.Set("X-Internal-Secret", "internal-secret")
+	request.Header.Set("X-Bridge-Hub-Secret", "internal-secret")
 
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {

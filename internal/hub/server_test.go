@@ -91,7 +91,7 @@ func TestDispatchFailsWhenBridgeOffline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create request: %v", err)
 	}
-	request.Header.Set(internalSecretHeader, "internal-secret")
+	request.Header.Set(bridgeHubSecretHeader, "internal-secret")
 
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
@@ -143,7 +143,7 @@ func TestAuthenticateEdgeReturnsServiceUnavailableWhenVerifierFails(t *testing.T
 
 	server := NewServer(Config{
 		TokenVerifier:  staticVerifier{err: errors.New("boom")},
-		InternalSecret: "internal-secret",
+		HubSecret:      "internal-secret",
 		PollHold:       100 * time.Millisecond,
 		GlobalInFlight: 8,
 	})
@@ -180,7 +180,7 @@ func newTestServer() (*Server, string) {
 				},
 			},
 		},
-		InternalSecret: "internal-secret",
+		HubSecret:      "internal-secret",
 		PollHold:       100 * time.Millisecond,
 		GlobalInFlight: 8,
 		Now:            func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
@@ -196,7 +196,7 @@ func dispatchRequest(t *testing.T, ctx context.Context, baseURL string, dispatch
 	if err != nil {
 		t.Fatalf("create dispatch request: %v", err)
 	}
-	request.Header.Set(internalSecretHeader, "internal-secret")
+	request.Header.Set(bridgeHubSecretHeader, "internal-secret")
 
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {

@@ -39,7 +39,7 @@ type HubConfig struct {
 	TokenVerifierSecret string
 	VerifyTimeoutMS     int
 	VerifyCacheSeconds  int
-	InternalSecret      string
+	HubSecret           string
 	PollHoldSeconds     int
 	GlobalInFlight      int
 }
@@ -50,7 +50,7 @@ type HubInputs struct {
 	TokenVerifierSecret string
 	VerifyTimeoutMS     string
 	VerifyCacheSeconds  string
-	InternalSecret      string
+	HubSecret           string
 	PollHoldSeconds     string
 	GlobalInFlight      string
 }
@@ -106,9 +106,9 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		return HubConfig{}, errors.New("missing WEVE_BRIDGE_TOKEN_VERIFIER_SECRET")
 	}
 
-	internalSecret := firstNonEmpty(inputs.InternalSecret, os.Getenv("WEVE_BRIDGE_INTERNAL_SECRET"))
-	if internalSecret == "" {
-		return HubConfig{}, errors.New("missing WEVE_BRIDGE_INTERNAL_SECRET")
+	hubSecret := firstNonEmpty(inputs.HubSecret, os.Getenv("WEVE_BRIDGE_HUB_SECRET"))
+	if hubSecret == "" {
+		return HubConfig{}, errors.New("missing WEVE_BRIDGE_HUB_SECRET")
 	}
 
 	verifyTimeoutMS, err := parseInt(firstNonEmpty(inputs.VerifyTimeoutMS, os.Getenv("WEVE_BRIDGE_VERIFY_TIMEOUT_MS")), defaultVerifyTimeoutMs)
@@ -137,7 +137,7 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		TokenVerifierSecret: verifyTokenSecret,
 		VerifyTimeoutMS:     verifyTimeoutMS,
 		VerifyCacheSeconds:  verifyCacheSeconds,
-		InternalSecret:      internalSecret,
+		HubSecret:           hubSecret,
 		PollHoldSeconds:     pollHoldSeconds,
 		GlobalInFlight:      globalInFlight,
 	}, nil
