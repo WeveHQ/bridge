@@ -4,13 +4,13 @@
 
 <div>
 
-[![CI](https://github.com/WeveHQ/bridge/actions/workflows/checks.yml/badge.svg)](https://github.com/WeveHQ/bridge/actions/workflows/checks.yml)
-[![Release](https://img.shields.io/github/v/release/WeveHQ/bridge?sort=semver)](https://github.com/WeveHQ/bridge/releases)
-[![Go](https://img.shields.io/github/go-mod/go-version/WeveHQ/bridge)](go.mod)
-[![Image](https://img.shields.io/badge/container-ghcr.io-blue)](https://github.com/WeveHQ/bridge/pkgs/container/weve-bridge)
 [![Signed](https://img.shields.io/badge/signed-cosign-green)](https://github.com/WeveHQ/bridge/releases)
 [![SLSA](https://img.shields.io/badge/SLSA-Level%203-green)](https://slsa.dev)
 [![SBOM](https://img.shields.io/badge/SBOM-CycloneDX-blue)](https://github.com/WeveHQ/bridge/releases)
+[![Release](https://img.shields.io/github/v/release/WeveHQ/bridge?sort=semver)](https://github.com/WeveHQ/bridge/releases)
+[![CI](https://github.com/WeveHQ/bridge/actions/workflows/checks.yml/badge.svg)](https://github.com/WeveHQ/bridge/actions/workflows/checks.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/WeveHQ/bridge)](go.mod)
+[![Image](https://img.shields.io/badge/container-ghcr.io-blue)](https://github.com/WeveHQ/bridge/pkgs/container/weve-bridge)
 [![License](https://img.shields.io/github/license/WeveHQ/bridge)](LICENSE)
 
 </div>
@@ -36,7 +36,7 @@ Scoped to HTTP request/responses only. This NOT a VPN and NOT a SOCKS tunnel. We
 
 ## Requirements
 
-- **0.25 vCPU / 128 MB RAM** minimum — 1 vCPU / 256 MB recommended.
+- 1 vCPU / 256 MB recommended.
 - Linux container runtime (Docker, Kubernetes, ECS, Nomad) or a Linux host
 - Outbound HTTPS/443 to `*.weve.security`
 - An enrollment token from the Weve dashboard
@@ -62,6 +62,8 @@ docker run -d --name weve-bridge \
   -e WEVE_BRIDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal \
   ghcr.io/wevehq/weve-bridge:latest edge
 ```
+
+> This same binary can act in _Hub Mode_ or _Edge Mode_. You want to run Edge Mode on your network. Weve runs Hub Mode in the cloud.
 
 ### Binary
 
