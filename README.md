@@ -3,14 +3,16 @@
 **Egress-only, zero-dependency agent to plug private data sources into Weve.**
 
 <div>
-[CI](https://github.com/WeveHQ/bridge/actions)
-[Release](https://github.com/WeveHQ/bridge/releases)
-[Go](go.mod)
-[Image](https://github.com/WeveHQ/bridge/pkgs/container/weve-bridge)
-[Signed](https://github.com/WeveHQ/bridge/releases)
-[SLSA](https://slsa.dev)
-[SBOM](https://github.com/WeveHQ/bridge/releases)
-[License](LICENSE)
+
+[![CI](https://github.com/WeveHQ/bridge/actions/workflows/checks.yml/badge.svg)](https://github.com/WeveHQ/bridge/actions/workflows/checks.yml)
+[![Release](https://img.shields.io/github/v/release/WeveHQ/bridge?sort=semver)](https://github.com/WeveHQ/bridge/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/WeveHQ/bridge)](go.mod)
+[![Image](https://img.shields.io/badge/container-ghcr.io-blue)](https://github.com/WeveHQ/bridge/pkgs/container/weve-bridge)
+[![Signed](https://img.shields.io/badge/signed-cosign-green)](https://github.com/WeveHQ/bridge/releases)
+[![SLSA](https://img.shields.io/badge/SLSA-Level%203-green)](https://slsa.dev)
+[![SBOM](https://img.shields.io/badge/SBOM-CycloneDX-blue)](https://github.com/WeveHQ/bridge/releases)
+[![License](https://img.shields.io/github/license/WeveHQ/bridge)](LICENSE)
+
 </div>
 
 ---
@@ -21,7 +23,7 @@ Weve Bridge connects the Weve SaaS Cloud to data sources inside your network.
 
 Run a single Go container on your network. It dials out to Weve over HTTPS/443 and waits. When Weve needs to query one of your private targets, the request travels back down that outbound connection. No inbound firewall rules.
 
-Very slim, zero dependencies, ~10 MB static binary.
+Very slim, zero dependencies, ~10 MB.
 
 ## How?
 
@@ -34,12 +36,11 @@ Scoped to HTTP request/responses only. This NOT a VPN and NOT a SOCKS tunnel. We
 
 ## Requirements
 
+- **0.25 vCPU / 128 MB RAM** minimum — 1 vCPU / 256 MB recommended.
 - Linux container runtime (Docker, Kubernetes, ECS, Nomad) or a Linux host
 - Outbound HTTPS/443 to `*.weve.security`
 - An enrollment token from the Weve dashboard
 - Optional: corporate proxy via `HTTPS_PROXY`, custom CA via `SSL_CERT_FILE`
-
-Runs as a non-root UID. No privileged capabilities needed.
 
 ## Enroll
 
