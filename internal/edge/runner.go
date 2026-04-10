@@ -17,8 +17,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/build"
-	"github.com/WeveHQ/weve-bridge/internal/wire"
+	"github.com/WeveHQ/bridge/internal/build"
+	"github.com/WeveHQ/bridge/internal/wire"
 )
 
 type Config struct {

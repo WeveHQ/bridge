@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/verifier"
-	"github.com/WeveHQ/weve-bridge/internal/wire"
+	"github.com/WeveHQ/bridge/internal/verifier"
+	"github.com/WeveHQ/bridge/internal/wire"
 )
 
 func TestDispatchRoundTrip(t *testing.T) {

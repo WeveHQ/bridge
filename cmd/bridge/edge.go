@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/config"
-	"github.com/WeveHQ/weve-bridge/internal/edge"
+	"github.com/WeveHQ/bridge/internal/config"
+	"github.com/WeveHQ/bridge/internal/edge"
 )
 
 func runEdge(ctx context.Context, args []string) error {

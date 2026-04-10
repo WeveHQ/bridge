@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/build"
-	"github.com/WeveHQ/weve-bridge/internal/verifier"
-	"github.com/WeveHQ/weve-bridge/internal/wire"
+	"github.com/WeveHQ/bridge/internal/build"
+	"github.com/WeveHQ/bridge/internal/verifier"
+	"github.com/WeveHQ/bridge/internal/wire"
 )
 
 const (

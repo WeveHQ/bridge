@@ -1,3 +1,3 @@
-module github.com/WeveHQ/weve-bridge
+module github.com/WeveHQ/bridge
 
 go 1.26.1

@@ -109,7 +109,7 @@ dockers:
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.source=https://github.com/WeveHQ/weve-bridge"
+      - "--label=org.opencontainers.image.source=https://github.com/WeveHQ/bridge"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.created={{ .CommitDate }}"
@@ -128,7 +128,7 @@ dockers:
     use: buildx
     build_flag_templates:
       - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.source=https://github.com/WeveHQ/weve-bridge"
+      - "--label=org.opencontainers.image.source=https://github.com/WeveHQ/bridge"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.created={{ .CommitDate }}"
@@ -149,7 +149,7 @@ docker_manifests:
 release:
   github:
     owner: WeveHQ
-    name: weve-bridge
+    name: bridge
   draft: false
   prerelease: auto
   mode: replace

@@ -3,13 +3,13 @@
 **Egress-only, zero-dependency agent to plug private data sources into Weve.**
 
 <div>
-[CI](https://github.com/WeveHQ/weve-bridge/actions)
-[Release](https://github.com/WeveHQ/weve-bridge/releases)
+[CI](https://github.com/WeveHQ/bridge/actions)
+[Release](https://github.com/WeveHQ/bridge/releases)
 [Go](go.mod)
-[Image](https://github.com/WeveHQ/weve-bridge/pkgs/container/weve-bridge)
-[Signed](https://github.com/WeveHQ/weve-bridge/releases)
+[Image](https://github.com/WeveHQ/bridge/pkgs/container/weve-bridge)
+[Signed](https://github.com/WeveHQ/bridge/releases)
 [SLSA](https://slsa.dev)
-[SBOM](https://github.com/WeveHQ/weve-bridge/releases)
+[SBOM](https://github.com/WeveHQ/bridge/releases)
 [License](LICENSE)
 </div>
 
@@ -64,7 +64,7 @@ docker run -d --name weve-bridge \
 
 ### Binary
 
-Download from [Releases](https://github.com/WeveHQ/weve-bridge/releases).
+Download from [Releases](https://github.com/WeveHQ/bridge/releases).
 
 > Optionally, you can verify the cosign signature and SLSA attestation before running.
 
@@ -82,8 +82,8 @@ cosign verify-blob \
 Requires Go 1.26+. Clone and build the `bridge` command:
 
 ```bash
-git clone https://github.com/WeveHQ/weve-bridge.git
-cd weve-bridge
+git clone https://github.com/WeveHQ/bridge.git
+cd bridge
 go build -o weve-bridge ./cmd/bridge
 
 ./weve-bridge edge

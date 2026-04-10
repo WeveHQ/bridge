@@ -8,9 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/config"
-	"github.com/WeveHQ/weve-bridge/internal/hub"
-	"github.com/WeveHQ/weve-bridge/internal/verifier"
+	"github.com/WeveHQ/bridge/internal/config"
+	"github.com/WeveHQ/bridge/internal/hub"
+	"github.com/WeveHQ/bridge/internal/verifier"
 )
 
 func runHub(ctx context.Context, args []string) error {

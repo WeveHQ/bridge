@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeveHQ/weve-bridge/internal/hub"
-	"github.com/WeveHQ/weve-bridge/internal/verifier"
-	"github.com/WeveHQ/weve-bridge/internal/wire"
+	"github.com/WeveHQ/bridge/internal/hub"
+	"github.com/WeveHQ/bridge/internal/verifier"
+	"github.com/WeveHQ/bridge/internal/wire"
 )
 
 func TestExecuteRequestSuccess(t *testing.T) {
