@@ -32,7 +32,7 @@ Very slim, zero dependencies, ~10 MB.
 3. Edge executes the HTTP call against your internal target.
 4. Response travels back up the same path.
 
-Scoped to HTTP request/responses only. This NOT a VPN and NOT a SOCKS tunnel. Weve can only reach targets that are on your allow-list.
+Scoped to HTTP request/responses only. This NOT a VPN and NOT a SOCKS tunnel. Weve can only reach targets that are on your allow-list. All HTTP requests performed by this are logged for audit (both in stdout and in the Weve platform).
 
 ## Requirements
 
@@ -44,7 +44,7 @@ Scoped to HTTP request/responses only. This NOT a VPN and NOT a SOCKS tunnel. We
 
 ## Enroll
 
-1. In the Weve dashboard, open **Settings → Bridges → New bridge**.
+1. In the Weve dashboard, open **Settings → Connectors → Private Network Access → New bridge**.
 2. Copy the enrollment token.
 3. Set `WEVE_BRIDGE_TOKEN`, `WEVE_BRIDGE_URL` and start the container.
 4. The dashboard shows the bridge as `connected` within 60 seconds.
