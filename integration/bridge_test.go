@@ -132,7 +132,7 @@ func freeAddr(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("allocate free port: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	return listener.Addr().String()
 }
@@ -175,7 +175,7 @@ func waitForHub(t *testing.T, baseURL string) {
 
 		response, err := http.DefaultClient.Do(request)
 		if err == nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 			if response.StatusCode == http.StatusUnauthorized {
 				return
 			}
@@ -218,7 +218,7 @@ func dispatchOnce(baseURL string, payload wire.DispatchRequest) (wire.HttpRespon
 	if err != nil {
 		return wire.HttpResponse{}, nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {

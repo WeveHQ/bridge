@@ -118,10 +118,7 @@ func (client *Client) Verify(ctx context.Context, token string) (Claims, error) 
 			return Claims{}, errors.New("verifier response missing tenantId or bridgeId")
 		}
 
-		claims := Claims{
-			TenantID: payload.TenantID,
-			BridgeID: payload.BridgeID,
-		}
+		claims := Claims(payload)
 		client.storeCached(token, claims)
 		return claims, nil
 	case http.StatusUnauthorized, http.StatusForbidden:

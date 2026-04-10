@@ -206,7 +206,7 @@ func (runner *Runner) postResponse(ctx context.Context, response wire.HttpRespon
 	if err != nil {
 		return err
 	}
-	defer httpResponse.Body.Close()
+	defer func() { _ = httpResponse.Body.Close() }()
 
 	if httpResponse.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(httpResponse.Body)
@@ -245,7 +245,7 @@ func ExecuteRequest(outboundTraceID string, request wire.HttpRequest) wire.HttpR
 	if err != nil {
 		return newErrorResponse(outboundTraceID, startedAt, len(requestBody), err)
 	}
-	defer httpResponse.Body.Close()
+	defer func() { _ = httpResponse.Body.Close() }()
 
 	responseBody, err := io.ReadAll(io.LimitReader(httpResponse.Body, wire.MaxBodyBytes+1))
 	if err != nil {

@@ -97,7 +97,7 @@ func TestDispatchFailsWhenBridgeOffline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch request: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("unexpected status code: %d", response.StatusCode)
@@ -162,7 +162,7 @@ func TestAuthenticateEdgeReturnsServiceUnavailableWhenVerifierFails(t *testing.T
 	if err != nil {
 		t.Fatalf("heartbeat request failed: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("unexpected status code: %d", response.StatusCode)
@@ -202,7 +202,7 @@ func dispatchRequest(t *testing.T, ctx context.Context, baseURL string, dispatch
 	if err != nil {
 		t.Fatalf("dispatch request failed: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	var parsed wire.HttpResponse
 	if err := json.NewDecoder(response.Body).Decode(&parsed); err != nil {
@@ -225,7 +225,7 @@ func pollRequest(t *testing.T, baseURL string, token string) wire.PollResponse {
 	if err != nil {
 		t.Fatalf("poll request failed: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
@@ -253,7 +253,7 @@ func postResponse(t *testing.T, baseURL string, token string, payload wire.HttpR
 	if err != nil {
 		t.Fatalf("post response failed: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
@@ -279,7 +279,7 @@ func postHeartbeat(t *testing.T, baseURL string, token string) {
 	if err != nil {
 		t.Fatalf("heartbeat request failed: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
