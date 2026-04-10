@@ -106,7 +106,7 @@ func (client *Client) Verify(ctx context.Context, token string) (Claims, error) 
 	if err != nil {
 		return Claims{}, fmt.Errorf("verify token request failed: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	switch response.StatusCode {
 	case http.StatusOK:

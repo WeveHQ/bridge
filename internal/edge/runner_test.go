@@ -28,7 +28,7 @@ func TestExecuteRequestSuccess(t *testing.T) {
 		writer.WriteHeader(http.StatusAccepted)
 		_, _ = writer.Write([]byte(`{"ok":true}`))
 	}))
-	defer target.Close()
+	defer func() { target.Close() }()
 
 	response := ExecuteRequest("ot_123", wire.HttpRequest{
 		Method:         "GET",
@@ -81,7 +81,7 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 		writer.WriteHeader(http.StatusOK)
 		_, _ = writer.Write([]byte(`{"source":"edge"}`))
 	}))
-	defer target.Close()
+	defer func() { target.Close() }()
 
 	now := time.Unix(1_700_000_000, 0).UTC()
 	token := "bridge-token"
@@ -102,7 +102,7 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 	})
 
 	hubHTTP := httptest.NewServer(hubServer.Handler())
-	defer hubHTTP.Close()
+	defer func() { hubHTTP.Close() }()
 
 	runner := NewRunner(Config{
 		Token:             token,
@@ -138,7 +138,7 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch via hub: %v", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
@@ -174,7 +174,7 @@ func waitForHeartbeat(t *testing.T, baseURL string, token string) {
 
 		response, err := http.DefaultClient.Do(request)
 		if err == nil {
-			response.Body.Close()
+			_ = response.Body.Close()
 			if response.StatusCode == http.StatusOK {
 				return
 			}

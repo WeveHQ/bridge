@@ -191,7 +191,7 @@ func dispatchOnce(
 	if err != nil {
 		return wire.HttpResponse{}, nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
@@ -221,7 +221,7 @@ func allocatePort(t *testing.T) int {
 	if err != nil {
 		t.Fatalf("allocate port: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	return listener.Addr().(*net.TCPAddr).Port
 }

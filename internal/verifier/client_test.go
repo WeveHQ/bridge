@@ -27,7 +27,7 @@ func TestClientVerifySuccessAndCache(t *testing.T) {
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"tenantId":"tenant_123","bridgeId":"bridge_123"}`))
 	}))
-	defer server.Close()
+	defer func() { server.Close() }()
 
 	client, err := NewClient(Config{
 		URL:      server.URL,
@@ -65,7 +65,7 @@ func TestClientVerifyRejectsInvalidToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		http.Error(writer, "invalid token", http.StatusUnauthorized)
 	}))
-	defer server.Close()
+	defer func() { server.Close() }()
 
 	client, err := NewClient(Config{URL: server.URL, Secret: "verifier-secret"})
 	if err != nil {

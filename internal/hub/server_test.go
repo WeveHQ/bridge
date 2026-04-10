@@ -21,7 +21,7 @@ func TestDispatchRoundTrip(t *testing.T) {
 
 	server, token := newTestServer()
 	testServer := httptest.NewServer(server.Handler())
-	defer testServer.Close()
+	defer func() { testServer.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -76,7 +76,7 @@ func TestDispatchFailsWhenBridgeOffline(t *testing.T) {
 
 	server, _ := newTestServer()
 	testServer := httptest.NewServer(server.Handler())
-	defer testServer.Close()
+	defer func() { testServer.Close() }()
 
 	requestBody := wire.MustJSON(wire.DispatchRequest{
 		OutboundTraceID: "ot_123",
@@ -109,7 +109,7 @@ func TestDuplicateResponseIsIdempotent(t *testing.T) {
 
 	server, token := newTestServer()
 	testServer := httptest.NewServer(server.Handler())
-	defer testServer.Close()
+	defer func() { testServer.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -148,7 +148,7 @@ func TestAuthenticateEdgeReturnsServiceUnavailableWhenVerifierFails(t *testing.T
 		GlobalInFlight: 8,
 	})
 	testServer := httptest.NewServer(server.Handler())
-	defer testServer.Close()
+	defer func() { testServer.Close() }()
 
 	request, err := http.NewRequest(http.MethodPost, testServer.URL+wire.HeartbeatPath, bytes.NewReader(wire.MustJSON(wire.HeartbeatRequest{
 		BridgeVersion: "dev",

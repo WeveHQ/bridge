@@ -35,7 +35,7 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 		writer.WriteHeader(http.StatusCreated)
 		_, _ = writer.Write([]byte(`{"via":"binary"}`))
 	}))
-	defer target.Close()
+	defer func() { target.Close() }()
 
 	binaryPath := buildBinary(t)
 	token := "bridge-token"

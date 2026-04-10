@@ -147,7 +147,7 @@ func (runner *Runner) poll(ctx context.Context) (wire.PollResponse, bool, error)
 	if err != nil {
 		return wire.PollResponse{}, false, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode == http.StatusNoContent {
 		return wire.PollResponse{}, false, nil
@@ -185,7 +185,7 @@ func (runner *Runner) sendHeartbeat(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)
