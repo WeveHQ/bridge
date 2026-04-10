@@ -14,6 +14,12 @@ import (
 
 var ErrInvalidToken = errors.New("invalid token")
 
+const secretHeader = "X-Bridge-Token-Verifier-Secret"
+
+func SecretHeader() string {
+	return secretHeader
+}
+
 type Claims struct {
 	TenantID string
 	BridgeID string
@@ -25,6 +31,7 @@ type TokenVerifier interface {
 
 type Config struct {
 	URL      string
+	Secret   string
 	Client   *http.Client
 	CacheTTL time.Duration
 	Now      func() time.Time
@@ -32,6 +39,7 @@ type Config struct {
 
 type Client struct {
 	url      string
+	secret   string
 	client   *http.Client
 	cacheTTL time.Duration
 	now      func() time.Time
@@ -54,6 +62,9 @@ func NewClient(cfg Config) (*Client, error) {
 	if cfg.URL == "" {
 		return nil, errors.New("missing verify token url")
 	}
+	if cfg.Secret == "" {
+		return nil, errors.New("missing verify token secret")
+	}
 
 	client := cfg.Client
 	if client == nil {
@@ -67,6 +78,7 @@ func NewClient(cfg Config) (*Client, error) {
 
 	return &Client{
 		url:      strings.TrimRight(cfg.URL, "/"),
+		secret:   cfg.Secret,
 		client:   client,
 		cacheTTL: cfg.CacheTTL,
 		now:      now,
@@ -88,6 +100,7 @@ func (client *Client) Verify(ctx context.Context, token string) (Claims, error) 
 		return Claims{}, err
 	}
 	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set(secretHeader, client.secret)
 
 	response, err := client.client.Do(request)
 	if err != nil {

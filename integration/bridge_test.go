@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WeveHQ/weve-bridge/internal/verifier"
 	"github.com/WeveHQ/weve-bridge/internal/wire"
 )
 
@@ -39,10 +40,11 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	binaryPath := buildBinary(t)
 	token := "bridge-token"
 	hubAddr := freeAddr(t)
-	verifyURL := startVerifier(t, token)
+	verifyURL := startVerifier(t, token, "verifier-secret")
 
 	hubCmd := startProcess(t, binaryPath, []string{"hub", "--listen=" + hubAddr}, []string{
-		"WEVE_BRIDGE_VERIFY_TOKEN_URL=" + verifyURL,
+		"WEVE_BRIDGE_TOKEN_VERIFIER_URL=" + verifyURL,
+		"WEVE_BRIDGE_TOKEN_VERIFIER_SECRET=verifier-secret",
 		"WEVE_BRIDGE_INTERNAL_SECRET=internal-secret",
 		"WEVE_BRIDGE_POLL_HOLD_SECONDS=1",
 		"WEVE_BRIDGE_GLOBAL_IN_FLIGHT=8",
@@ -99,7 +101,7 @@ func buildBinary(t *testing.T) string {
 	return outputPath
 }
 
-func startVerifier(t *testing.T, token string) string {
+func startVerifier(t *testing.T, token string, secret string) string {
 	t.Helper()
 
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -109,6 +111,10 @@ func startVerifier(t *testing.T, token string) string {
 		}
 		if request.Header.Get("Authorization") != "Bearer "+token {
 			http.Error(writer, "invalid token", http.StatusUnauthorized)
+			return
+		}
+		if request.Header.Get(verifier.SecretHeader()) != secret {
+			http.Error(writer, "invalid secret", http.StatusUnauthorized)
 			return
 		}
 

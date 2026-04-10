@@ -32,11 +32,12 @@ func TestDockerComposeRoundTrip(t *testing.T) {
 	hubPort := allocatePort(t)
 	token := "bridge-token"
 
-	runCompose(t, projectName, hubPort, token, "up", "-d", "--build")
+	runCompose(t, projectName, hubPort, token, "up", "-d", "--build", "verifier", "target", "hub")
 	defer runCompose(t, projectName, hubPort, token, "down", "-v", "--remove-orphans")
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hubPort)
 	waitForHub(t, baseURL)
+	runCompose(t, projectName, hubPort, token, "up", "-d", "--build", "edge")
 
 	response := dispatchWithRetry(t, baseURL, wire.DispatchRequest{
 		OutboundTraceID: "ot_docker",

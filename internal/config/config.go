@@ -34,23 +34,25 @@ type EdgeInputs struct {
 }
 
 type HubConfig struct {
-	ListenAddr         string
-	VerifyTokenURL     string
-	VerifyTimeoutMS    int
-	VerifyCacheSeconds int
-	InternalSecret     string
-	PollHoldSeconds    int
-	GlobalInFlight     int
+	ListenAddr          string
+	TokenVerifierURL    string
+	TokenVerifierSecret string
+	VerifyTimeoutMS     int
+	VerifyCacheSeconds  int
+	InternalSecret      string
+	PollHoldSeconds     int
+	GlobalInFlight      int
 }
 
 type HubInputs struct {
-	ListenAddr         string
-	VerifyTokenURL     string
-	VerifyTimeoutMS    string
-	VerifyCacheSeconds string
-	InternalSecret     string
-	PollHoldSeconds    string
-	GlobalInFlight     string
+	ListenAddr          string
+	TokenVerifierURL    string
+	TokenVerifierSecret string
+	VerifyTimeoutMS     string
+	VerifyCacheSeconds  string
+	InternalSecret      string
+	PollHoldSeconds     string
+	GlobalInFlight      string
 }
 
 func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
@@ -94,9 +96,14 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		listenAddr = defaultListenAddr
 	}
 
-	verifyTokenURL := firstNonEmpty(inputs.VerifyTokenURL, os.Getenv("WEVE_BRIDGE_VERIFY_TOKEN_URL"))
+	verifyTokenURL := firstNonEmpty(inputs.TokenVerifierURL, os.Getenv("WEVE_BRIDGE_TOKEN_VERIFIER_URL"))
 	if verifyTokenURL == "" {
-		return HubConfig{}, errors.New("missing WEVE_BRIDGE_VERIFY_TOKEN_URL")
+		return HubConfig{}, errors.New("missing WEVE_BRIDGE_TOKEN_VERIFIER_URL")
+	}
+
+	verifyTokenSecret := firstNonEmpty(inputs.TokenVerifierSecret, os.Getenv("WEVE_BRIDGE_TOKEN_VERIFIER_SECRET"))
+	if verifyTokenSecret == "" {
+		return HubConfig{}, errors.New("missing WEVE_BRIDGE_TOKEN_VERIFIER_SECRET")
 	}
 
 	internalSecret := firstNonEmpty(inputs.InternalSecret, os.Getenv("WEVE_BRIDGE_INTERNAL_SECRET"))
@@ -125,13 +132,14 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 	}
 
 	return HubConfig{
-		ListenAddr:         listenAddr,
-		VerifyTokenURL:     strings.TrimRight(verifyTokenURL, "/"),
-		VerifyTimeoutMS:    verifyTimeoutMS,
-		VerifyCacheSeconds: verifyCacheSeconds,
-		InternalSecret:     internalSecret,
-		PollHoldSeconds:    pollHoldSeconds,
-		GlobalInFlight:     globalInFlight,
+		ListenAddr:          listenAddr,
+		TokenVerifierURL:    strings.TrimRight(verifyTokenURL, "/"),
+		TokenVerifierSecret: verifyTokenSecret,
+		VerifyTimeoutMS:     verifyTimeoutMS,
+		VerifyCacheSeconds:  verifyCacheSeconds,
+		InternalSecret:      internalSecret,
+		PollHoldSeconds:     pollHoldSeconds,
+		GlobalInFlight:      globalInFlight,
 	}, nil
 }
 

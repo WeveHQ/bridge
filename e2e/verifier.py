@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 TOKEN = os.environ["WEVE_BRIDGE_TOKEN"]
+VERIFIER_SECRET = os.environ["WEVE_BRIDGE_TOKEN_VERIFIER_SECRET"]
 BRIDGE_ID = os.environ["WEVE_BRIDGE_BRIDGE_ID"]
 TENANT_ID = os.environ["WEVE_BRIDGE_TENANT_ID"]
 
@@ -19,6 +20,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(401)
             self.end_headers()
             self.wfile.write(b"invalid token")
+            return
+        if self.headers.get("X-Bridge-Token-Verifier-Secret") != VERIFIER_SECRET:
+            self.send_response(401)
+            self.end_headers()
+            self.wfile.write(b"invalid secret")
             return
 
         body = json.dumps({"tenantId": TENANT_ID, "bridgeId": BRIDGE_ID}).encode("utf-8")

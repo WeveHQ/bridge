@@ -28,7 +28,8 @@ func runHub(ctx context.Context, args []string) error {
 	}
 
 	tokenVerifier, err := verifier.NewClient(verifier.Config{
-		URL:      cfg.VerifyTokenURL,
+		URL:      cfg.TokenVerifierURL,
+		Secret:   cfg.TokenVerifierSecret,
 		CacheTTL: time.Duration(cfg.VerifyCacheSeconds) * time.Second,
 		Client: &http.Client{
 			Timeout: time.Duration(cfg.VerifyTimeoutMS) * time.Millisecond,

@@ -20,6 +20,9 @@ func TestClientVerifySuccessAndCache(t *testing.T) {
 		if request.Header.Get("Authorization") != "Bearer token-123" {
 			t.Fatalf("unexpected authorization header: %s", request.Header.Get("Authorization"))
 		}
+		if request.Header.Get(secretHeader) != "verifier-secret" {
+			t.Fatalf("unexpected secret header: %s", request.Header.Get(secretHeader))
+		}
 
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"tenantId":"tenant_123","bridgeId":"bridge_123"}`))
@@ -28,6 +31,7 @@ func TestClientVerifySuccessAndCache(t *testing.T) {
 
 	client, err := NewClient(Config{
 		URL:      server.URL,
+		Secret:   "verifier-secret",
 		CacheTTL: time.Minute,
 		Now:      func() time.Time { return now },
 	})
@@ -63,7 +67,7 @@ func TestClientVerifyRejectsInvalidToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewClient(Config{URL: server.URL})
+	client, err := NewClient(Config{URL: server.URL, Secret: "verifier-secret"})
 	if err != nil {
 		t.Fatalf("new verifier client: %v", err)
 	}
