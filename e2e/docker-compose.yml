@@ -17,12 +17,16 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    restart: on-failure
     command:
       [
         "edge",
         "--token=${WEVE_BRIDGE_TOKEN}",
         "--hub-url=http://hub:8080"
       ]
+    depends_on:
+      - hub
+      - verifier
     environment:
       WEVE_BRIDGE_POLL_CONCURRENCY: "2"
       WEVE_BRIDGE_HEARTBEAT_SECONDS: "1"

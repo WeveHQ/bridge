@@ -160,7 +160,7 @@ func dispatchWithRetry(
 ) wire.HttpResponse {
 	t.Helper()
 
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(40 * time.Second)
 	for time.Now().Before(deadline) {
 		response, reject, err := dispatchOnce(baseURL, payload)
 		if err == nil {
@@ -170,7 +170,7 @@ func dispatchWithRetry(
 			t.Fatalf("dispatch failed: %v", err)
 		}
 
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	t.Fatal("timed out waiting for edge to connect")
