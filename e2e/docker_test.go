@@ -70,6 +70,69 @@ func TestDockerComposeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEdgeReconnectsAfterHubRestart(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not available")
+	}
+	if err := exec.Command("docker", "info").Run(); err != nil {
+		t.Skip("docker daemon not available")
+	}
+
+	projectName := "weve-bridge-" + fmt.Sprint(time.Now().UnixNano())
+	hubPort := allocatePort(t)
+	token := "bridge-token"
+
+	runCompose(t, projectName, hubPort, token, "up", "-d", "--build", "verifier", "target", "hub")
+	defer runCompose(t, projectName, hubPort, token, "down", "-v", "--remove-orphans")
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hubPort)
+	waitForHub(t, baseURL)
+	runCompose(t, projectName, hubPort, token, "up", "-d", "--build", "edge")
+
+	// Verify the edge is working before we disrupt anything.
+	response := dispatchWithRetry(t, baseURL, wire.DispatchRequest{
+		OutboundTraceID: "ot_before_restart",
+		Req: wire.HttpRequest{
+			Method:         http.MethodPost,
+			URL:            "http://target:8080/search?q=before",
+			DeadlineUnixMs: uint64(time.Now().Add(10 * time.Second).UnixMilli()),
+			Headers:        []wire.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
+			Body:           base64.StdEncoding.EncodeToString([]byte(`{"phase":"before"}`)),
+		},
+	})
+	if response.Status != http.StatusCreated {
+		t.Fatalf("pre-restart dispatch failed: status=%d error=%#v", response.Status, response.Meta.Error)
+	}
+
+	// Kill the hub so the edge loses its connection.
+	runCompose(t, projectName, hubPort, token, "stop", "hub")
+	runCompose(t, projectName, hubPort, token, "rm", "-f", "hub")
+
+	// Bring the hub back up on the same port.
+	runCompose(t, projectName, hubPort, token, "up", "-d", "hub")
+	waitForHub(t, baseURL)
+
+	// The edge should reconnect and handle a new dispatch.
+	response = dispatchWithRetry(t, baseURL, wire.DispatchRequest{
+		OutboundTraceID: "ot_after_restart",
+		Req: wire.HttpRequest{
+			Method:         http.MethodPost,
+			URL:            "http://target:8080/search?q=after",
+			DeadlineUnixMs: uint64(time.Now().Add(10 * time.Second).UnixMilli()),
+			Headers:        []wire.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
+			Body:           base64.StdEncoding.EncodeToString([]byte(`{"phase":"after"}`)),
+		},
+	})
+	if response.Status != http.StatusCreated {
+		t.Fatalf(
+			"post-restart dispatch failed: status=%d error=%#v logs=%s",
+			response.Status,
+			response.Meta.Error,
+			composeLogs(t, projectName, hubPort, token),
+		)
+	}
+}
+
 func runCompose(
 	t *testing.T,
 	projectName string,

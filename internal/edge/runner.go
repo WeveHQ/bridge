@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -20,6 +21,8 @@ import (
 	"github.com/WeveHQ/bridge/internal/build"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
+
+const retryInterval = 10 * time.Second
 
 type Config struct {
 	Token             string
@@ -86,8 +89,13 @@ func (runner *Runner) runHeartbeatLoop(ctx context.Context, errCh chan<- error) 
 
 	for {
 		if err := runner.sendHeartbeat(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			errCh <- err
-			return
+			fmt.Fprintf(os.Stderr, "weve-bridge: heartbeat failed: %v, retrying in %s\n", err, retryInterval)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(retryInterval):
+				continue
+			}
 		}
 
 		select {
@@ -106,8 +114,13 @@ func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
 				return
 			}
 
-			errCh <- err
-			return
+			fmt.Fprintf(os.Stderr, "weve-bridge: poll failed: %v, retrying in %s\n", err, retryInterval)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(retryInterval):
+				continue
+			}
 		}
 		if !ok {
 			select {
