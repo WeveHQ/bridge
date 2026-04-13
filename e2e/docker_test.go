@@ -5,7 +5,6 @@ package e2e
 import (
 	"encoding/base64"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"

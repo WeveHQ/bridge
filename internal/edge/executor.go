@@ -15,19 +15,39 @@ import (
 	"github.com/WeveHQ/bridge/internal/wire"
 )
 
+type executor struct {
+	client       *http.Client
+	allowedHosts []string
+}
+
+func newExecutor(client *http.Client, allowedHosts []string) *executor {
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	return &executor{
+		client:       client,
+		allowedHosts: allowedHosts,
+	}
+}
+
 func ExecuteRequest(outboundTraceID string, request wire.HttpRequest, allowedHosts []string) wire.HttpResponse {
+	return newExecutor(nil, allowedHosts).Execute(outboundTraceID, request)
+}
+
+func (executor *executor) Execute(outboundTraceID string, request wire.HttpRequest) wire.HttpResponse {
 	startedAt := time.Now()
 	requestBody, bodyError := decodeRequestBody(request.Body)
 	if bodyError != nil {
 		return newErrorResponse(outboundTraceID, startedAt, 0, bodyError)
 	}
 
-	if len(allowedHosts) > 0 {
+	if len(executor.allowedHosts) > 0 {
 		host := ""
 		if parsed, err := url.Parse(request.URL); err == nil {
 			host = strings.ToLower(parsed.Hostname())
 		}
-		if !hostAllowed(host, allowedHosts) {
+		if !hostAllowed(host, executor.allowedHosts) {
 			return hostNotAllowedResponse(outboundTraceID, startedAt, len(requestBody), host)
 		}
 	}
@@ -45,7 +65,7 @@ func ExecuteRequest(outboundTraceID string, request wire.HttpRequest, allowedHos
 		httpRequest.Header.Add(header.Name, header.Value)
 	}
 
-	httpResponse, err := http.DefaultClient.Do(httpRequest)
+	httpResponse, err := executor.client.Do(httpRequest)
 	if err != nil {
 		return newErrorResponse(outboundTraceID, startedAt, len(requestBody), err)
 	}

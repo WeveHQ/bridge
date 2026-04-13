@@ -14,7 +14,7 @@ func (runner *Runner) handleDispatch(ctx context.Context, dispatch wire.PollResp
 		"url", dispatch.Req.URL,
 	)
 
-	response := ExecuteRequest(dispatch.OutboundTraceID, dispatch.Req, runner.allowedHosts)
+	response := runner.executor.Execute(dispatch.OutboundTraceID, dispatch.Req)
 	if err := runner.postResponse(ctx, response); err != nil {
 		return err
 	}
