@@ -36,6 +36,7 @@ func runEdge(ctx context.Context, args []string) error {
 		PollConcurrency:   cfg.PollConcurrency,
 		HeartbeatInterval: time.Duration(cfg.HeartbeatSeconds) * time.Second,
 		PollTimeout:       time.Duration(cfg.PollTimeoutMS) * time.Millisecond,
+		AllowedHosts:      cfg.AllowedHosts,
 	})
 
 	return runner.Run(runContext)

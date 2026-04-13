@@ -86,6 +86,60 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	}
 }
 
+func TestBridgeBinaryRejectsDisallowedHost(t *testing.T) {
+	t.Parallel()
+
+	reached := false
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		reached = true
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer func() { target.Close() }()
+
+	binaryPath := buildBinary(t)
+	token := "bridge-token"
+	hubAddr := freeAddr(t)
+	verifyURL := startVerifier(t, token, "verifier-secret")
+
+	hubCmd := startProcess(t, binaryPath, []string{"hub", "--listen=" + hubAddr}, []string{
+		"WEVE_BRIDGE_HUB_TOKEN_VERIFIER_URL=" + verifyURL,
+		"WEVE_BRIDGE_HUB_TOKEN_VERIFIER_SECRET=verifier-secret",
+		"WEVE_BRIDGE_HUB_SECRET=internal-secret",
+		"WEVE_BRIDGE_HUB_POLL_HOLD_SECONDS=1",
+		"WEVE_BRIDGE_HUB_GLOBAL_IN_FLIGHT=8",
+	})
+	defer stopProcess(hubCmd)
+
+	waitForHub(t, "http://"+hubAddr)
+
+	edgeCmd := startProcess(t, binaryPath, []string{"edge", "--token=" + token, "--hub-url=http://" + hubAddr}, []string{
+		"WEVE_BRIDGE_EDGE_POLL_CONCURRENCY=2",
+		"WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS=1",
+		"WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS=1500",
+		"WEVE_BRIDGE_EDGE_ALLOWED_HOSTS=allowed.example,another.example",
+	})
+	defer stopProcess(edgeCmd)
+
+	response := dispatchWithRetry(t, "http://"+hubAddr, wire.DispatchRequest{
+		OutboundTraceID: "ot_host_blocked",
+		Req: wire.HttpRequest{
+			Method:         "GET",
+			URL:            target.URL + "/blocked",
+			DeadlineUnixMs: uint64(time.Now().Add(10 * time.Second).UnixMilli()),
+		},
+	})
+
+	if reached {
+		t.Fatal("target was reached despite host being disallowed")
+	}
+	if response.Meta.Error == nil {
+		t.Fatalf("expected execution error, got response status %d", response.Status)
+	}
+	if response.Meta.Error.Kind != wire.ErrorKindHostNotAllowed {
+		t.Fatalf("unexpected error kind: %s", response.Meta.Error.Kind)
+	}
+}
+
 func buildBinary(t *testing.T) string {
 	t.Helper()
 

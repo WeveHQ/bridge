@@ -23,6 +23,7 @@ type EdgeConfig struct {
 	PollConcurrency  int
 	HeartbeatSeconds int
 	PollTimeoutMS    int
+	AllowedHosts     []string
 }
 
 type EdgeInputs struct {
@@ -31,6 +32,7 @@ type EdgeInputs struct {
 	PollConcurrency  string
 	HeartbeatSeconds string
 	PollTimeoutMS    string
+	AllowedHosts     string
 }
 
 type HubConfig struct {
@@ -81,13 +83,35 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 		return EdgeConfig{}, fmt.Errorf("parse poll timeout ms: %w", err)
 	}
 
+	allowedHosts := parseAllowedHosts(firstNonEmpty(inputs.AllowedHosts, os.Getenv("WEVE_BRIDGE_EDGE_ALLOWED_HOSTS")))
+
 	return EdgeConfig{
 		Token:            token,
 		HubURL:           strings.TrimRight(hubURL, "/"),
 		PollConcurrency:  pollConcurrency,
 		HeartbeatSeconds: heartbeatSeconds,
 		PollTimeoutMS:    pollTimeoutMS,
+		AllowedHosts:     allowedHosts,
 	}, nil
+}
+
+func parseAllowedHosts(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	hosts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		host := strings.ToLower(strings.TrimSpace(part))
+		if host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	if len(hosts) == 0 {
+		return nil
+	}
+	return hosts
 }
 
 func ParseHubConfig(inputs HubInputs) (HubConfig, error) {

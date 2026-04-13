@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ func TestExecuteRequestSuccess(t *testing.T) {
 		URL:            target.URL,
 		DeadlineUnixMs: uint64(time.Now().Add(time.Minute).UnixMilli()),
 		Headers:        []wire.HeaderEntry{{Name: "X-Test", Value: "value"}},
-	})
+	}, nil)
 
 	if response.Status != http.StatusAccepted {
 		t.Fatalf("unexpected status: %d", response.Status)
@@ -52,6 +53,82 @@ func TestExecuteRequestSuccess(t *testing.T) {
 	}
 }
 
+func TestExecuteRequestRejectsDisallowedHost(t *testing.T) {
+	t.Parallel()
+
+	reached := false
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		reached = true
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer func() { target.Close() }()
+
+	response := ExecuteRequest("ot_123", wire.HttpRequest{
+		Method:         "GET",
+		URL:            target.URL + "/foo",
+		DeadlineUnixMs: uint64(time.Now().Add(time.Minute).UnixMilli()),
+	}, []string{"allowed.example"})
+
+	if reached {
+		t.Fatal("target server was reached despite host not being allowed")
+	}
+	if response.Meta.Error == nil {
+		t.Fatal("expected execution error")
+	}
+	if response.Meta.Error.Kind != wire.ErrorKindHostNotAllowed {
+		t.Fatalf("unexpected error kind: %s", response.Meta.Error.Kind)
+	}
+	targetURL, err := url.Parse(target.URL)
+	if err != nil {
+		t.Fatalf("parse target url: %v", err)
+	}
+	expected := "host not allowed: " + targetURL.Hostname()
+	if response.Meta.Error.Message != expected {
+		t.Fatalf("unexpected error message: %q (want %q)", response.Meta.Error.Message, expected)
+	}
+}
+
+func TestExecuteRequestAllowsListedHost(t *testing.T) {
+	t.Parallel()
+
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer func() { target.Close() }()
+
+	targetURL, err := url.Parse(target.URL)
+	if err != nil {
+		t.Fatalf("parse target url: %v", err)
+	}
+
+	response := ExecuteRequest("ot_123", wire.HttpRequest{
+		Method:         "GET",
+		URL:            target.URL,
+		DeadlineUnixMs: uint64(time.Now().Add(time.Minute).UnixMilli()),
+	}, []string{targetURL.Hostname()})
+
+	if response.Meta.Error != nil {
+		t.Fatalf("unexpected error: %#v", response.Meta.Error)
+	}
+	if response.Status != http.StatusOK {
+		t.Fatalf("unexpected status: %d", response.Status)
+	}
+}
+
+func TestExecuteRequestAllowListCaseInsensitive(t *testing.T) {
+	t.Parallel()
+
+	response := ExecuteRequest("ot_123", wire.HttpRequest{
+		Method:         "GET",
+		URL:            "http://EXAMPLE.com/",
+		DeadlineUnixMs: uint64(time.Now().Add(time.Minute).UnixMilli()),
+	}, []string{"example.com"})
+
+	if response.Meta.Error != nil && response.Meta.Error.Kind == wire.ErrorKindHostNotAllowed {
+		t.Fatalf("host should have been allowed (case-insensitive): %#v", response.Meta.Error)
+	}
+}
+
 func TestExecuteRequestMapsConnectionRefused(t *testing.T) {
 	t.Parallel()
 
@@ -59,7 +136,7 @@ func TestExecuteRequestMapsConnectionRefused(t *testing.T) {
 		Method:         "GET",
 		URL:            "http://127.0.0.1:1",
 		DeadlineUnixMs: uint64(time.Now().Add(2 * time.Second).UnixMilli()),
-	})
+	}, nil)
 
 	if response.Meta.Error == nil {
 		t.Fatal("expected execution error")

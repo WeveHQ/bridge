@@ -72,6 +72,7 @@ const (
 	ErrorKindTLS               ErrorKind = "tls"
 	ErrorKindCanceled          ErrorKind = "canceled"
 	ErrorKindConnectionReset   ErrorKind = "connection_reset"
+	ErrorKindHostNotAllowed    ErrorKind = "host_not_allowed"
 	ErrorKindUnknown           ErrorKind = "unknown"
 )
 

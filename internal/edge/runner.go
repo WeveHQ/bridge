@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -30,6 +31,7 @@ type Config struct {
 	PollConcurrency   int
 	HeartbeatInterval time.Duration
 	PollTimeout       time.Duration
+	AllowedHosts      []string
 	Client            *http.Client
 }
 
@@ -40,6 +42,7 @@ type Runner struct {
 	pollConcurrency   int
 	heartbeatInterval time.Duration
 	pollTimeout       time.Duration
+	allowedHosts      []string
 	startedAt         time.Time
 	inFlight          atomic.Int32
 }
@@ -57,6 +60,7 @@ func NewRunner(cfg Config) *Runner {
 		pollConcurrency:   cfg.PollConcurrency,
 		heartbeatInterval: cfg.HeartbeatInterval,
 		pollTimeout:       cfg.PollTimeout,
+		allowedHosts:      cfg.AllowedHosts,
 		startedAt:         time.Now(),
 	}
 }
@@ -140,7 +144,7 @@ func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
 }
 
 func (runner *Runner) handleDispatch(ctx context.Context, dispatch wire.PollResponse) error {
-	response := ExecuteRequest(dispatch.OutboundTraceID, dispatch.Req)
+	response := ExecuteRequest(dispatch.OutboundTraceID, dispatch.Req, runner.allowedHosts)
 	return runner.postResponse(ctx, response)
 }
 
@@ -234,11 +238,21 @@ func (runner *Runner) decorateAuth(request *http.Request) {
 	request.Header.Set("Content-Type", "application/json")
 }
 
-func ExecuteRequest(outboundTraceID string, request wire.HttpRequest) wire.HttpResponse {
+func ExecuteRequest(outboundTraceID string, request wire.HttpRequest, allowedHosts []string) wire.HttpResponse {
 	startedAt := time.Now()
 	requestBody, bodyError := decodeRequestBody(request.Body)
 	if bodyError != nil {
 		return newErrorResponse(outboundTraceID, startedAt, 0, bodyError)
+	}
+
+	if len(allowedHosts) > 0 {
+		host := ""
+		if parsed, err := url.Parse(request.URL); err == nil {
+			host = strings.ToLower(parsed.Hostname())
+		}
+		if !hostAllowed(host, allowedHosts) {
+			return hostNotAllowedResponse(outboundTraceID, startedAt, len(requestBody), host)
+		}
 	}
 
 	deadline := time.UnixMilli(int64(request.DeadlineUnixMs))
@@ -278,6 +292,33 @@ func ExecuteRequest(outboundTraceID string, request wire.HttpRequest) wire.HttpR
 			DurationMs:      uint32(time.Since(startedAt).Milliseconds()),
 			BytesOut:        uint64(len(requestBody)),
 			BytesIn:         uint64(len(responseBody)),
+		},
+	}
+}
+
+func hostAllowed(host string, allowedHosts []string) bool {
+	if host == "" {
+		return false
+	}
+	for _, allowed := range allowedHosts {
+		if host == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func hostNotAllowedResponse(outboundTraceID string, startedAt time.Time, bytesOut int, host string) wire.HttpResponse {
+	return wire.HttpResponse{
+		OutboundTraceID: outboundTraceID,
+		Meta: wire.ExecutionMeta{
+			StartedAtUnixMs: uint64(startedAt.UnixMilli()),
+			DurationMs:      uint32(time.Since(startedAt).Milliseconds()),
+			BytesOut:        uint64(bytesOut),
+			Error: &wire.ExecutionError{
+				Kind:    wire.ErrorKindHostNotAllowed,
+				Message: fmt.Sprintf("host not allowed: %s", host),
+			},
 		},
 	}
 }
