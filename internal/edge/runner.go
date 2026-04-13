@@ -96,30 +96,29 @@ func (runner *Runner) Run(ctx context.Context) error {
 	)
 	defer runner.logger.Info("edge stopped")
 
-	heartbeatCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	var wg sync.WaitGroup
 
-	errCh := make(chan error, runner.pollConcurrency+1)
-	go runner.runHeartbeatLoop(heartbeatCtx, errCh)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runner.runHeartbeatLoop(ctx)
+	}()
 
 	for index := 0; index < runner.pollConcurrency; index++ {
-		go runner.runPollSlot(ctx, errCh)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runner.runPollSlot(ctx, &wg)
+		}()
 	}
 
-	select {
-	case <-ctx.Done():
-		runner.logger.Info("edge shutting down", "reason", ctx.Err())
-		return nil
-	case err := <-errCh:
-		if err == nil {
-			return nil
-		}
-		runner.logger.Error("edge runner failed", "error", err)
-		return err
-	}
+	<-ctx.Done()
+	runner.logger.Info("edge shutting down", "reason", ctx.Err())
+	wg.Wait()
+	return nil
 }
 
-func (runner *Runner) runHeartbeatLoop(ctx context.Context, errCh chan<- error) {
+func (runner *Runner) runHeartbeatLoop(ctx context.Context) {
 	ticker := time.NewTicker(runner.heartbeatInterval)
 	defer ticker.Stop()
 
@@ -144,7 +143,7 @@ func (runner *Runner) runHeartbeatLoop(ctx context.Context, errCh chan<- error) 
 	}
 }
 
-func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
+func (runner *Runner) runPollSlot(ctx context.Context, wg *sync.WaitGroup) {
 	for {
 		dispatch, ok, err := runner.poll(ctx)
 		if err != nil {
@@ -181,7 +180,11 @@ func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
 			continue
 		}
 
-		go runner.runPollSlot(ctx, errCh)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runner.runPollSlot(ctx, wg)
+		}()
 		runner.inFlight.Add(1)
 		if err := runner.handleDispatch(ctx, dispatch); err != nil {
 			runner.logger.Warn("dispatch response post failed",
