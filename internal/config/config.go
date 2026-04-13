@@ -88,19 +88,19 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_HUB_URL")
 	}
 
-	pollConcurrency, err := parseInt(firstNonEmpty(inputs.PollConcurrency, os.Getenv("WEVE_BRIDGE_EDGE_POLL_CONCURRENCY")), defaultPollConcurrency)
+	pollConcurrency, err := parseIntInRange(firstNonEmpty(inputs.PollConcurrency, os.Getenv("WEVE_BRIDGE_EDGE_POLL_CONCURRENCY")), defaultPollConcurrency, 1, "poll concurrency")
 	if err != nil {
-		return EdgeConfig{}, fmt.Errorf("parse poll concurrency: %w", err)
+		return EdgeConfig{}, err
 	}
 
-	heartbeatSeconds, err := parseInt(firstNonEmpty(inputs.HeartbeatSeconds, os.Getenv("WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS")), defaultHeartbeatSeconds)
+	heartbeatSeconds, err := parseIntInRange(firstNonEmpty(inputs.HeartbeatSeconds, os.Getenv("WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS")), defaultHeartbeatSeconds, 1, "heartbeat seconds")
 	if err != nil {
-		return EdgeConfig{}, fmt.Errorf("parse heartbeat seconds: %w", err)
+		return EdgeConfig{}, err
 	}
 
-	pollTimeoutMS, err := parseInt(firstNonEmpty(inputs.PollTimeoutMS, os.Getenv("WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS")), defaultPollTimeoutMs)
+	pollTimeoutMS, err := parseIntInRange(firstNonEmpty(inputs.PollTimeoutMS, os.Getenv("WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS")), defaultPollTimeoutMs, 1, "poll timeout ms")
 	if err != nil {
-		return EdgeConfig{}, fmt.Errorf("parse poll timeout ms: %w", err)
+		return EdgeConfig{}, err
 	}
 
 	allowedHosts := parseAllowedHosts(firstNonEmpty(inputs.AllowedHosts, os.Getenv("WEVE_BRIDGE_EDGE_ALLOWED_HOSTS")))
@@ -160,32 +160,29 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		return HubConfig{}, errors.New("missing WEVE_BRIDGE_HUB_SECRET")
 	}
 
-	verifyTimeoutMS, err := parseInt(firstNonEmpty(inputs.VerifyTimeoutMS, os.Getenv("WEVE_BRIDGE_HUB_VERIFY_TIMEOUT_MS")), defaultVerifyTimeoutMs)
+	verifyTimeoutMS, err := parseIntInRange(firstNonEmpty(inputs.VerifyTimeoutMS, os.Getenv("WEVE_BRIDGE_HUB_VERIFY_TIMEOUT_MS")), defaultVerifyTimeoutMs, 1, "verify timeout ms")
 	if err != nil {
-		return HubConfig{}, fmt.Errorf("parse verify timeout ms: %w", err)
+		return HubConfig{}, err
 	}
 
-	verifyCacheSeconds, err := parseInt(firstNonEmpty(inputs.VerifyCacheSeconds, os.Getenv("WEVE_BRIDGE_HUB_VERIFY_CACHE_SECONDS")), defaultVerifyCacheSec)
+	verifyCacheSeconds, err := parseIntInRange(firstNonEmpty(inputs.VerifyCacheSeconds, os.Getenv("WEVE_BRIDGE_HUB_VERIFY_CACHE_SECONDS")), defaultVerifyCacheSec, 0, "verify cache seconds")
 	if err != nil {
-		return HubConfig{}, fmt.Errorf("parse verify cache seconds: %w", err)
+		return HubConfig{}, err
 	}
 
-	pollHoldSeconds, err := parseInt(firstNonEmpty(inputs.PollHoldSeconds, os.Getenv("WEVE_BRIDGE_HUB_POLL_HOLD_SECONDS")), 25)
+	pollHoldSeconds, err := parseIntInRange(firstNonEmpty(inputs.PollHoldSeconds, os.Getenv("WEVE_BRIDGE_HUB_POLL_HOLD_SECONDS")), 25, 1, "poll hold seconds")
 	if err != nil {
-		return HubConfig{}, fmt.Errorf("parse poll hold seconds: %w", err)
+		return HubConfig{}, err
 	}
 
-	globalInFlight, err := parseInt(firstNonEmpty(inputs.GlobalInFlight, os.Getenv("WEVE_BRIDGE_HUB_GLOBAL_IN_FLIGHT")), 64)
+	globalInFlight, err := parseIntInRange(firstNonEmpty(inputs.GlobalInFlight, os.Getenv("WEVE_BRIDGE_HUB_GLOBAL_IN_FLIGHT")), 64, 1, "global in-flight")
 	if err != nil {
-		return HubConfig{}, fmt.Errorf("parse global in-flight: %w", err)
+		return HubConfig{}, err
 	}
 
-	perEdgeMaxPollConcurrency, err := parseInt(firstNonEmpty(inputs.PerEdgeMaxPollConcurrency, os.Getenv("WEVE_BRIDGE_HUB_PER_EDGE_MAX_POLL_CONCURRENCY")), 0)
+	perEdgeMaxPollConcurrency, err := parseIntInRange(firstNonEmpty(inputs.PerEdgeMaxPollConcurrency, os.Getenv("WEVE_BRIDGE_HUB_PER_EDGE_MAX_POLL_CONCURRENCY")), 0, 0, "per-edge max poll concurrency")
 	if err != nil {
-		return HubConfig{}, fmt.Errorf("parse per-edge max poll concurrency: %w", err)
-	}
-	if perEdgeMaxPollConcurrency < 0 {
-		return HubConfig{}, errors.New("per-edge max poll concurrency must be non-negative")
+		return HubConfig{}, err
 	}
 
 	logCfg, err := parseLogConfig(inputs.Log)
@@ -230,14 +227,18 @@ func parseLogConfig(inputs LogInputs) (LogConfig, error) {
 	}, nil
 }
 
-func parseInt(raw string, fallback int) (int, error) {
+func parseIntInRange(raw string, fallback, min int, name string) (int, error) {
 	if raw == "" {
 		return fallback, nil
 	}
 
 	value, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("parse %s: %w", name, err)
+	}
+
+	if value < min {
+		return 0, fmt.Errorf("%s must be >= %d, got %d", name, min, value)
 	}
 
 	return value, nil

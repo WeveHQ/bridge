@@ -83,6 +83,115 @@ func TestParseEdgeConfigRejectsInvalidLogLevel(t *testing.T) {
 	}
 }
 
+func TestParseEdgeConfigRejectsOutOfRangeInts(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		inputs  EdgeInputs
+		wantMsg string
+	}{
+		{
+			name:    "poll concurrency zero",
+			inputs:  EdgeInputs{Token: "t", HubURL: "https://h", PollConcurrency: "0"},
+			wantMsg: "poll concurrency must be >= 1",
+		},
+		{
+			name:    "poll concurrency negative",
+			inputs:  EdgeInputs{Token: "t", HubURL: "https://h", PollConcurrency: "-1"},
+			wantMsg: "poll concurrency must be >= 1",
+		},
+		{
+			name:    "heartbeat seconds zero",
+			inputs:  EdgeInputs{Token: "t", HubURL: "https://h", HeartbeatSeconds: "0"},
+			wantMsg: "heartbeat seconds must be >= 1",
+		},
+		{
+			name:    "poll timeout ms zero",
+			inputs:  EdgeInputs{Token: "t", HubURL: "https://h", PollTimeoutMS: "0"},
+			wantMsg: "poll timeout ms must be >= 1",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := ParseEdgeConfig(tc.inputs)
+			if err == nil || !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Fatalf("expected error containing %q, got %v", tc.wantMsg, err)
+			}
+		})
+	}
+}
+
+func TestParseHubConfigRejectsOutOfRangeInts(t *testing.T) {
+	t.Parallel()
+
+	base := HubInputs{
+		TokenVerifierURL:    "http://127.0.0.1:8181/verify",
+		TokenVerifierSecret: "verifier-secret",
+		HubSecret:           "internal-secret",
+	}
+
+	cases := []struct {
+		name    string
+		mutate  func(*HubInputs)
+		wantMsg string
+	}{
+		{
+			name:    "global in-flight zero",
+			mutate:  func(h *HubInputs) { h.GlobalInFlight = "0" },
+			wantMsg: "global in-flight must be >= 1",
+		},
+		{
+			name:    "verify timeout ms zero",
+			mutate:  func(h *HubInputs) { h.VerifyTimeoutMS = "0" },
+			wantMsg: "verify timeout ms must be >= 1",
+		},
+		{
+			name:    "poll hold seconds zero",
+			mutate:  func(h *HubInputs) { h.PollHoldSeconds = "0" },
+			wantMsg: "poll hold seconds must be >= 1",
+		},
+		{
+			name:    "per-edge max poll concurrency negative",
+			mutate:  func(h *HubInputs) { h.PerEdgeMaxPollConcurrency = "-1" },
+			wantMsg: "per-edge max poll concurrency must be >= 0",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			inputs := base
+			tc.mutate(&inputs)
+			_, err := ParseHubConfig(inputs)
+			if err == nil || !strings.Contains(err.Error(), tc.wantMsg) {
+				t.Fatalf("expected error containing %q, got %v", tc.wantMsg, err)
+			}
+		})
+	}
+}
+
+func TestParseHubConfigAcceptsZeroVerifyCacheSeconds(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := ParseHubConfig(HubInputs{
+		TokenVerifierURL:    "http://127.0.0.1:8181/verify",
+		TokenVerifierSecret: "verifier-secret",
+		HubSecret:           "internal-secret",
+		VerifyCacheSeconds:  "0",
+	})
+	if err != nil {
+		t.Fatalf("parse hub config: %v", err)
+	}
+	if cfg.VerifyCacheSeconds != 0 {
+		t.Fatalf("unexpected verify cache seconds: %d", cfg.VerifyCacheSeconds)
+	}
+}
+
 func TestParseHubConfigRejectsInvalidLogFormat(t *testing.T) {
 	t.Parallel()
 
