@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/WeveHQ/bridge/internal/logging"
+	"github.com/WeveHQ/bridge/internal/testsupport"
 	"github.com/WeveHQ/bridge/internal/verifier"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
@@ -145,7 +145,7 @@ func TestAuthenticateEdgeReturnsServiceUnavailableWhenVerifierFails(t *testing.T
 	t.Parallel()
 
 	server := NewServer(Config{
-		TokenVerifier:  staticVerifier{err: errors.New("boom")},
+		TokenVerifier:  testsupport.StaticVerifier{Err: errors.New("boom")},
 		HubSecret:      "internal-secret",
 		PollHold:       100 * time.Millisecond,
 		GlobalInFlight: 8,
@@ -351,8 +351,8 @@ func newTestServer() (*Server, string) {
 func newTestServerWithOptions(now func() time.Time, logger *slog.Logger) (*Server, string) {
 	token := "bridge-token"
 	server := NewServer(Config{
-		TokenVerifier: staticVerifier{
-			claimsByToken: map[string]verifier.Claims{
+		TokenVerifier: testsupport.StaticVerifier{
+			ClaimsByToken: map[string]verifier.Claims{
 				token: {
 					TenantID: "tenant_123",
 					BridgeID: "bridge_123",
@@ -371,148 +371,34 @@ func newTestServerWithOptions(now func() time.Time, logger *slog.Logger) (*Serve
 
 func dispatchRequest(t *testing.T, ctx context.Context, baseURL string, dispatch wire.DispatchRequest) (wire.HttpResponse, int) {
 	t.Helper()
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+wire.DispatchPathPrefix+"bridge_123", bytes.NewReader(wire.MustJSON(dispatch)))
-	if err != nil {
-		t.Fatalf("create dispatch request: %v", err)
-	}
-	request.Header.Set(bridgeHubSecretHeader, "internal-secret")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("dispatch request failed: %v", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	var parsed wire.HttpResponse
-	if err := json.NewDecoder(response.Body).Decode(&parsed); err != nil {
-		t.Fatalf("decode dispatch response: %v", err)
-	}
-
-	return parsed, response.StatusCode
+	return testsupport.DispatchRequestTo(t, ctx, baseURL, "bridge_123", "internal-secret", dispatch)
 }
 
 func pollRequest(t *testing.T, baseURL string, token string) wire.PollResponse {
 	t.Helper()
-
-	request, err := http.NewRequest(http.MethodPost, baseURL+wire.PollPath, bytes.NewReader(wire.MustJSON(wire.PollRequest{BridgeVersion: "dev"})))
-	if err != nil {
-		t.Fatalf("create poll request: %v", err)
-	}
-	request.Header.Set(authorizationHeader, "Bearer "+token)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("poll request failed: %v", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	if response.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(response.Body)
-		t.Fatalf("unexpected poll status %d: %s", response.StatusCode, string(body))
-	}
-
-	var parsed wire.PollResponse
-	if err := json.NewDecoder(response.Body).Decode(&parsed); err != nil {
-		t.Fatalf("decode poll response: %v", err)
-	}
-
-	return parsed
+	return testsupport.PollRequest(t, baseURL, token)
 }
 
 func postResponse(t *testing.T, baseURL string, token string, payload wire.HttpResponse) {
 	t.Helper()
-
-	request, err := http.NewRequest(http.MethodPost, baseURL+wire.ResponsePathPrefix+payload.OutboundTraceID, bytes.NewReader(wire.MustJSON(payload)))
-	if err != nil {
-		t.Fatalf("create response request: %v", err)
-	}
-	request.Header.Set(authorizationHeader, "Bearer "+token)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("post response failed: %v", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	if response.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(response.Body)
-		t.Fatalf("unexpected response post status %d: %s", response.StatusCode, string(body))
-	}
+	testsupport.PostResponse(t, baseURL, token, payload)
 }
 
 func postHeartbeat(t *testing.T, baseURL string, token string) {
 	t.Helper()
-
-	request, err := http.NewRequest(http.MethodPost, baseURL+wire.HeartbeatPath, bytes.NewReader(wire.MustJSON(wire.HeartbeatRequest{
+	testsupport.PostHeartbeat(t, baseURL, token, wire.HeartbeatRequest{
 		BridgeVersion: "dev",
 		OS:            "darwin",
 		Arch:          "arm64",
 		UptimeSec:     42,
 		InFlight:      3,
 		Hostname:      "test-host",
-	})))
-	if err != nil {
-		t.Fatalf("create heartbeat request: %v", err)
-	}
-	request.Header.Set(authorizationHeader, "Bearer "+token)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("heartbeat request failed: %v", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	if response.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(response.Body)
-		t.Fatalf("unexpected heartbeat status %d: %s", response.StatusCode, string(body))
-	}
+	})
 }
 
 func getBridgeStatus(t *testing.T, baseURL string, bridgeID string) wire.BridgeStatusResponse {
 	t.Helper()
-
-	request, err := http.NewRequest(http.MethodGet, baseURL+wire.BridgeStatusPathPrefix+bridgeID+wire.BridgeStatusPathSuffix, nil)
-	if err != nil {
-		t.Fatalf("create bridge status request: %v", err)
-	}
-	request.Header.Set(bridgeHubSecretHeader, "internal-secret")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("bridge status request failed: %v", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	if response.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(response.Body)
-		t.Fatalf("unexpected bridge status %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	var parsed wire.BridgeStatusResponse
-	if err := json.NewDecoder(response.Body).Decode(&parsed); err != nil {
-		t.Fatalf("decode bridge status response: %v", err)
-	}
-
-	return parsed
-}
-
-type staticVerifier struct {
-	claimsByToken map[string]verifier.Claims
-	err           error
-}
-
-func (stub staticVerifier) Verify(_ context.Context, token string) (verifier.Claims, error) {
-	if stub.err != nil {
-		return verifier.Claims{}, stub.err
-	}
-
-	claims, ok := stub.claimsByToken[token]
-	if !ok {
-		return verifier.Claims{}, verifier.ErrInvalidToken
-	}
-
-	return claims, nil
+	return testsupport.GetBridgeStatus(t, baseURL, bridgeID, "internal-secret")
 }
 
 func newTwoBridgeServer() (*Server, map[string]string) {
@@ -525,7 +411,7 @@ func newTwoBridgeServer() (*Server, map[string]string) {
 		claims[token] = verifier.Claims{TenantID: "tenant_123", BridgeID: bridgeID}
 	}
 	server := NewServer(Config{
-		TokenVerifier:  staticVerifier{claimsByToken: claims},
+		TokenVerifier:  testsupport.StaticVerifier{ClaimsByToken: claims},
 		HubSecret:      "internal-secret",
 		PollHold:       100 * time.Millisecond,
 		GlobalInFlight: 8,
@@ -541,41 +427,12 @@ func postHeartbeatFor(t *testing.T, baseURL string, token string) {
 
 func dispatchRequestTo(t *testing.T, ctx context.Context, baseURL string, bridgeID string, dispatch wire.DispatchRequest) (wire.HttpResponse, int) {
 	t.Helper()
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+wire.DispatchPathPrefix+bridgeID, bytes.NewReader(wire.MustJSON(dispatch)))
-	if err != nil {
-		t.Fatalf("create dispatch request: %v", err)
-	}
-	request.Header.Set(bridgeHubSecretHeader, "internal-secret")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("dispatch request failed: %v", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	var parsed wire.HttpResponse
-	if err := json.NewDecoder(response.Body).Decode(&parsed); err != nil {
-		t.Fatalf("decode dispatch response: %v", err)
-	}
-
-	return parsed, response.StatusCode
+	return testsupport.DispatchRequestTo(t, ctx, baseURL, bridgeID, "internal-secret", dispatch)
 }
 
 func postRawResponse(t *testing.T, baseURL string, token string, payload wire.HttpResponse) *http.Response {
 	t.Helper()
-
-	request, err := http.NewRequest(http.MethodPost, baseURL+wire.ResponsePathPrefix+payload.OutboundTraceID, bytes.NewReader(wire.MustJSON(payload)))
-	if err != nil {
-		t.Fatalf("create response request: %v", err)
-	}
-	request.Header.Set(authorizationHeader, "Bearer "+token)
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("post response failed: %v", err)
-	}
-	return response
+	return testsupport.PostRawResponse(t, baseURL, token, payload)
 }
 
 func TestDispatchIsolatedByBridgeOnDuplicateTraceID(t *testing.T) {

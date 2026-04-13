@@ -16,6 +16,7 @@ import (
 
 	"github.com/WeveHQ/bridge/internal/hub"
 	"github.com/WeveHQ/bridge/internal/logging"
+	"github.com/WeveHQ/bridge/internal/testsupport"
 	"github.com/WeveHQ/bridge/internal/verifier"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
@@ -167,8 +168,8 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 	token := "bridge-token"
 
 	hubServer := hub.NewServer(hub.Config{
-		TokenVerifier: staticVerifier{
-			claimsByToken: map[string]verifier.Claims{
+		TokenVerifier: testsupport.StaticVerifier{
+			ClaimsByToken: map[string]verifier.Claims{
 				token: {
 					TenantID: "tenant_123",
 					BridgeID: "bridge_123",
@@ -199,7 +200,7 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 		_ = runner.Run(ctx)
 	}()
 
-	waitForHeartbeat(t, hubHTTP.URL, token)
+	testsupport.WaitForHeartbeat(t, hubHTTP.URL, token, 2*time.Second, 20*time.Millisecond)
 
 	request, err := http.NewRequest(http.MethodPost, hubHTTP.URL+wire.DispatchPathPrefix+"bridge_123", bytes.NewReader(wire.MustJSON(wire.DispatchRequest{
 		OutboundTraceID: "ot_123",
@@ -330,43 +331,4 @@ func TestHandleDispatchLogsSummary(t *testing.T) {
 	if !strings.Contains(logs, "status=202") {
 		t.Fatalf("missing response status in logs: %s", logs)
 	}
-}
-
-func waitForHeartbeat(t *testing.T, baseURL string, token string) {
-	t.Helper()
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		request, err := http.NewRequest(http.MethodPost, baseURL+wire.HeartbeatPath, bytes.NewReader(wire.MustJSON(wire.HeartbeatRequest{
-			BridgeVersion: "probe",
-		})))
-		if err != nil {
-			t.Fatalf("create heartbeat probe: %v", err)
-		}
-		request.Header.Set("Authorization", "Bearer "+token)
-
-		response, err := http.DefaultClient.Do(request)
-		if err == nil {
-			_ = response.Body.Close()
-			if response.StatusCode == http.StatusOK {
-				return
-			}
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	t.Fatal("timed out waiting for heartbeat")
-}
-
-type staticVerifier struct {
-	claimsByToken map[string]verifier.Claims
-}
-
-func (stub staticVerifier) Verify(_ context.Context, token string) (verifier.Claims, error) {
-	claims, ok := stub.claimsByToken[token]
-	if !ok {
-		return verifier.Claims{}, verifier.ErrInvalidToken
-	}
-
-	return claims, nil
 }

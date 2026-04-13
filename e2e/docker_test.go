@@ -3,10 +3,7 @@
 package e2e
 
 import (
-	"bytes"
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WeveHQ/bridge/internal/testsupport"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
 
@@ -36,10 +34,10 @@ func TestDockerComposeRoundTrip(t *testing.T) {
 	defer runCompose(t, projectName, hubPort, token, "down", "-v", "--remove-orphans")
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hubPort)
-	waitForHub(t, baseURL)
+	testsupport.WaitForHub(t, baseURL, 20*time.Second, 200*time.Millisecond)
 	runCompose(t, projectName, hubPort, token, "up", "-d", "--build", "edge")
 
-	response := dispatchWithRetry(t, baseURL, wire.DispatchRequest{
+	response := testsupport.DispatchWithRetry(t, baseURL, "bridge_123", "internal-secret", wire.DispatchRequest{
 		OutboundTraceID: "ot_docker",
 		Req: wire.HttpRequest{
 			Method:         http.MethodPost,
@@ -50,7 +48,7 @@ func TestDockerComposeRoundTrip(t *testing.T) {
 			},
 			Body: base64.StdEncoding.EncodeToString([]byte(`{"from":"docker"}`)),
 		},
-	})
+	}, 40*time.Second, 500*time.Millisecond)
 
 	if response.Status != http.StatusCreated {
 		t.Fatalf(
@@ -86,11 +84,11 @@ func TestEdgeReconnectsAfterHubRestart(t *testing.T) {
 	defer runCompose(t, projectName, hubPort, token, "down", "-v", "--remove-orphans")
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", hubPort)
-	waitForHub(t, baseURL)
+	testsupport.WaitForHub(t, baseURL, 20*time.Second, 200*time.Millisecond)
 	runCompose(t, projectName, hubPort, token, "up", "-d", "--build", "edge")
 
 	// Verify the edge is working before we disrupt anything.
-	response := dispatchWithRetry(t, baseURL, wire.DispatchRequest{
+	response := testsupport.DispatchWithRetry(t, baseURL, "bridge_123", "internal-secret", wire.DispatchRequest{
 		OutboundTraceID: "ot_before_restart",
 		Req: wire.HttpRequest{
 			Method:         http.MethodPost,
@@ -99,7 +97,7 @@ func TestEdgeReconnectsAfterHubRestart(t *testing.T) {
 			Headers:        []wire.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
 			Body:           base64.StdEncoding.EncodeToString([]byte(`{"phase":"before"}`)),
 		},
-	})
+	}, 40*time.Second, 500*time.Millisecond)
 	if response.Status != http.StatusCreated {
 		t.Fatalf("pre-restart dispatch failed: status=%d error=%#v", response.Status, response.Meta.Error)
 	}
@@ -110,10 +108,10 @@ func TestEdgeReconnectsAfterHubRestart(t *testing.T) {
 
 	// Bring the hub back up on the same port.
 	runCompose(t, projectName, hubPort, token, "up", "-d", "hub")
-	waitForHub(t, baseURL)
+	testsupport.WaitForHub(t, baseURL, 20*time.Second, 200*time.Millisecond)
 
 	// The edge should reconnect and handle a new dispatch.
-	response = dispatchWithRetry(t, baseURL, wire.DispatchRequest{
+	response = testsupport.DispatchWithRetry(t, baseURL, "bridge_123", "internal-secret", wire.DispatchRequest{
 		OutboundTraceID: "ot_after_restart",
 		Req: wire.HttpRequest{
 			Method:         http.MethodPost,
@@ -122,7 +120,7 @@ func TestEdgeReconnectsAfterHubRestart(t *testing.T) {
 			Headers:        []wire.HeaderEntry{{Name: "Content-Type", Value: "application/json"}},
 			Body:           base64.StdEncoding.EncodeToString([]byte(`{"phase":"after"}`)),
 		},
-	})
+	}, 40*time.Second, 500*time.Millisecond)
 	if response.Status != http.StatusCreated {
 		t.Fatalf(
 			"post-restart dispatch failed: status=%d error=%#v logs=%s",
@@ -188,93 +186,6 @@ func composeLogs(
 	}
 
 	return string(output)
-}
-
-func waitForHub(t *testing.T, baseURL string) {
-	t.Helper()
-
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		request, err := http.NewRequest(http.MethodPost, baseURL+wire.HeartbeatPath, bytes.NewReader(wire.MustJSON(wire.HeartbeatRequest{
-			BridgeVersion: "probe",
-		})))
-		if err != nil {
-			t.Fatalf("create readiness request: %v", err)
-		}
-
-		response, err := http.DefaultClient.Do(request)
-		if err == nil {
-			response.Body.Close()
-			if response.StatusCode == http.StatusUnauthorized {
-				return
-			}
-		}
-
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	t.Fatal("timed out waiting for hub")
-}
-
-func dispatchWithRetry(
-	t *testing.T,
-	baseURL string,
-	payload wire.DispatchRequest,
-) wire.HttpResponse {
-	t.Helper()
-
-	deadline := time.Now().Add(40 * time.Second)
-	for time.Now().Before(deadline) {
-		response, reject, err := dispatchOnce(baseURL, payload)
-		if err == nil {
-			return response
-		}
-		if reject == nil || reject.Error.Code != wire.BridgeOfflineCode {
-			t.Fatalf("dispatch failed: %v", err)
-		}
-
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	t.Fatal("timed out waiting for edge to connect")
-	return wire.HttpResponse{}
-}
-
-func dispatchOnce(
-	baseURL string,
-	payload wire.DispatchRequest,
-) (wire.HttpResponse, *wire.DispatchReject, error) {
-	request, err := http.NewRequest(http.MethodPost, baseURL+wire.DispatchPathPrefix+"bridge_123", bytes.NewReader(wire.MustJSON(payload)))
-	if err != nil {
-		return wire.HttpResponse{}, nil, err
-	}
-	request.Header.Set("X-Bridge-Hub-Secret", "internal-secret")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return wire.HttpResponse{}, nil, err
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return wire.HttpResponse{}, nil, err
-	}
-
-	if response.StatusCode == http.StatusOK {
-		var parsed wire.HttpResponse
-		if err := json.Unmarshal(body, &parsed); err != nil {
-			return wire.HttpResponse{}, nil, err
-		}
-		return parsed, nil, nil
-	}
-
-	var reject wire.DispatchReject
-	if err := json.Unmarshal(body, &reject); err != nil {
-		return wire.HttpResponse{}, nil, err
-	}
-
-	return wire.HttpResponse{}, &reject, errors.New(reject.Error.Code)
 }
 
 func allocatePort(t *testing.T) int {

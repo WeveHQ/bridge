@@ -1,10 +1,7 @@
 package integration
 
 import (
-	"bytes"
 	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -15,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WeveHQ/bridge/internal/verifier"
+	"github.com/WeveHQ/bridge/internal/testsupport"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
 
@@ -40,7 +37,7 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	binaryPath := buildBinary(t)
 	token := "bridge-token"
 	hubAddr := freeAddr(t)
-	verifyURL := startVerifier(t, token, "verifier-secret")
+	verifyURL := testsupport.StartVerifierServer(t, token, "verifier-secret")
 
 	hubCmd := startProcess(t, binaryPath, []string{"hub", "--listen=" + hubAddr}, []string{
 		"WEVE_BRIDGE_HUB_TOKEN_VERIFIER_URL=" + verifyURL,
@@ -51,7 +48,7 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	})
 	defer stopProcess(hubCmd)
 
-	waitForHub(t, "http://"+hubAddr)
+	testsupport.WaitForHub(t, "http://"+hubAddr, 5*time.Second, 50*time.Millisecond)
 
 	edgeCmd := startProcess(t, binaryPath, []string{"edge", "--token=" + token, "--hub-url=http://" + hubAddr}, []string{
 		"WEVE_BRIDGE_EDGE_POLL_CONCURRENCY=2",
@@ -60,7 +57,7 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	})
 	defer stopProcess(edgeCmd)
 
-	response := dispatchWithRetry(t, "http://"+hubAddr, wire.DispatchRequest{
+	response := testsupport.DispatchWithRetry(t, "http://"+hubAddr, "bridge_123", "internal-secret", wire.DispatchRequest{
 		OutboundTraceID: "ot_integration",
 		Req: wire.HttpRequest{
 			Method:         "POST",
@@ -71,7 +68,7 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 			},
 			Body: base64.StdEncoding.EncodeToString([]byte(`{"from":"integration"}`)),
 		},
-	})
+	}, 8*time.Second, 100*time.Millisecond)
 
 	if response.Status != http.StatusCreated {
 		t.Fatalf("unexpected response status: %d", response.Status)
@@ -99,7 +96,7 @@ func TestBridgeBinaryRejectsDisallowedHost(t *testing.T) {
 	binaryPath := buildBinary(t)
 	token := "bridge-token"
 	hubAddr := freeAddr(t)
-	verifyURL := startVerifier(t, token, "verifier-secret")
+	verifyURL := testsupport.StartVerifierServer(t, token, "verifier-secret")
 
 	hubCmd := startProcess(t, binaryPath, []string{"hub", "--listen=" + hubAddr}, []string{
 		"WEVE_BRIDGE_HUB_TOKEN_VERIFIER_URL=" + verifyURL,
@@ -110,7 +107,7 @@ func TestBridgeBinaryRejectsDisallowedHost(t *testing.T) {
 	})
 	defer stopProcess(hubCmd)
 
-	waitForHub(t, "http://"+hubAddr)
+	testsupport.WaitForHub(t, "http://"+hubAddr, 5*time.Second, 50*time.Millisecond)
 
 	edgeCmd := startProcess(t, binaryPath, []string{"edge", "--token=" + token, "--hub-url=http://" + hubAddr}, []string{
 		"WEVE_BRIDGE_EDGE_POLL_CONCURRENCY=2",
@@ -120,14 +117,14 @@ func TestBridgeBinaryRejectsDisallowedHost(t *testing.T) {
 	})
 	defer stopProcess(edgeCmd)
 
-	response := dispatchWithRetry(t, "http://"+hubAddr, wire.DispatchRequest{
+	response := testsupport.DispatchWithRetry(t, "http://"+hubAddr, "bridge_123", "internal-secret", wire.DispatchRequest{
 		OutboundTraceID: "ot_host_blocked",
 		Req: wire.HttpRequest{
 			Method:         "GET",
 			URL:            target.URL + "/blocked",
 			DeadlineUnixMs: uint64(time.Now().Add(10 * time.Second).UnixMilli()),
 		},
-	})
+	}, 8*time.Second, 100*time.Millisecond)
 
 	if reached {
 		t.Fatal("target was reached despite host being disallowed")
@@ -153,30 +150,6 @@ func buildBinary(t *testing.T) string {
 	}
 
 	return outputPath
-}
-
-func startVerifier(t *testing.T, token string, secret string) string {
-	t.Helper()
-
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodPost {
-			http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if request.Header.Get("Authorization") != "Bearer "+token {
-			http.Error(writer, "invalid token", http.StatusUnauthorized)
-			return
-		}
-		if request.Header.Get(verifier.SecretHeader()) != secret {
-			http.Error(writer, "invalid secret", http.StatusUnauthorized)
-			return
-		}
-
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"tenantId":"tenant_123","bridgeId":"bridge_123"}`))
-	}))
-	t.Cleanup(server.Close)
-	return server.URL
 }
 
 func freeAddr(t *testing.T) string {
@@ -213,86 +186,6 @@ func stopProcess(command *exec.Cmd) {
 
 	_ = command.Process.Kill()
 	_, _ = command.Process.Wait()
-}
-
-func waitForHub(t *testing.T, baseURL string) {
-	t.Helper()
-
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		request, err := http.NewRequest(http.MethodPost, baseURL+wire.HeartbeatPath, bytes.NewReader(wire.MustJSON(wire.HeartbeatRequest{
-			BridgeVersion: "probe",
-		})))
-		if err != nil {
-			t.Fatalf("create readiness request: %v", err)
-		}
-
-		response, err := http.DefaultClient.Do(request)
-		if err == nil {
-			_ = response.Body.Close()
-			if response.StatusCode == http.StatusUnauthorized {
-				return
-			}
-		}
-
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	t.Fatal("timed out waiting for hub")
-}
-
-func dispatchWithRetry(t *testing.T, baseURL string, payload wire.DispatchRequest) wire.HttpResponse {
-	t.Helper()
-
-	deadline := time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) {
-		response, reject, err := dispatchOnce(baseURL, payload)
-		if err == nil {
-			return response
-		}
-		if reject == nil || reject.Error.Code != wire.BridgeOfflineCode {
-			t.Fatalf("dispatch request failed: %v", err)
-		}
-
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	t.Fatal("timed out waiting for bridge dispatch")
-	return wire.HttpResponse{}
-}
-
-func dispatchOnce(baseURL string, payload wire.DispatchRequest) (wire.HttpResponse, *wire.DispatchReject, error) {
-	request, err := http.NewRequest(http.MethodPost, baseURL+wire.DispatchPathPrefix+"bridge_123", bytes.NewReader(wire.MustJSON(payload)))
-	if err != nil {
-		return wire.HttpResponse{}, nil, err
-	}
-	request.Header.Set("X-Bridge-Hub-Secret", "internal-secret")
-
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return wire.HttpResponse{}, nil, err
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return wire.HttpResponse{}, nil, err
-	}
-
-	if response.StatusCode == http.StatusOK {
-		var parsed wire.HttpResponse
-		if err := json.Unmarshal(body, &parsed); err != nil {
-			return wire.HttpResponse{}, nil, err
-		}
-		return parsed, nil, nil
-	}
-
-	var reject wire.DispatchReject
-	if err := json.Unmarshal(body, &reject); err != nil {
-		return wire.HttpResponse{}, nil, err
-	}
-
-	return wire.HttpResponse{}, &reject, errors.New(reject.Error.Code)
 }
 
 func projectRoot(t *testing.T) string {
