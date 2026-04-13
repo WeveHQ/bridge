@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,6 +170,135 @@ func TestAuthenticateEdgeReturnsServiceUnavailableWhenVerifierFails(t *testing.T
 	}
 }
 
+func TestBridgeStatusReportsHeartbeatAndWaiters(t *testing.T) {
+	t.Parallel()
+
+	server, token := newTestServer()
+	testServer := httptest.NewServer(server.Handler())
+	defer func() { testServer.Close() }()
+
+	postHeartbeat(t, testServer.URL, token)
+
+	pollErrCh := make(chan error, 1)
+	go func() {
+		request, err := http.NewRequest(http.MethodPost, testServer.URL+wire.PollPath, bytes.NewReader(wire.MustJSON(wire.PollRequest{
+			BridgeVersion: "dev",
+		})))
+		if err != nil {
+			pollErrCh <- err
+			return
+		}
+		request.Header.Set(authorizationHeader, "Bearer "+token)
+
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			pollErrCh <- err
+			return
+		}
+		defer func() { _ = response.Body.Close() }()
+		if response.StatusCode != http.StatusNoContent {
+			body, _ := io.ReadAll(response.Body)
+			pollErrCh <- errors.New(string(body))
+			return
+		}
+		pollErrCh <- nil
+	}()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		status := getBridgeStatus(t, testServer.URL, "bridge_123")
+		if status.WaiterCount == 1 {
+			if !status.Alive {
+				t.Fatal("expected bridge to be alive")
+			}
+			if status.BridgeVersion != "dev" {
+				t.Fatalf("unexpected bridge version: %s", status.BridgeVersion)
+			}
+			if status.Hostname != "test-host" {
+				t.Fatalf("unexpected hostname: %s", status.Hostname)
+			}
+			if status.OS != "darwin" || status.Arch != "arm64" {
+				t.Fatalf("unexpected platform: %s/%s", status.OS, status.Arch)
+			}
+			if status.LastHeartbeatAtUnixMs == nil {
+				t.Fatal("expected last heartbeat timestamp")
+			}
+			break
+		}
+
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for waiter count")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	if err := <-pollErrCh; err != nil {
+		t.Fatalf("poll request failed: %v", err)
+	}
+}
+
+func TestBridgeStatusReportsInFlightDispatches(t *testing.T) {
+	t.Parallel()
+
+	server, token := newTestServer()
+	testServer := httptest.NewServer(server.Handler())
+	defer func() { testServer.Close() }()
+
+	postHeartbeat(t, testServer.URL, token)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	outcomeCh := make(chan error, 1)
+	go func() {
+		_, status := dispatchRequest(t, ctx, testServer.URL, wire.DispatchRequest{
+			OutboundTraceID: "ot_123",
+			Req: wire.HttpRequest{
+				Method:         "GET",
+				URL:            "https://target.internal/test",
+				DeadlineUnixMs: uint64(time.Now().Add(time.Minute).UnixMilli()),
+			},
+		})
+		if status != http.StatusOK {
+			outcomeCh <- errors.New("unexpected dispatch status")
+			return
+		}
+		outcomeCh <- nil
+	}()
+
+	_ = pollRequest(t, testServer.URL, token)
+
+	deadline := time.After(2 * time.Second)
+	for {
+		status := getBridgeStatus(t, testServer.URL, "bridge_123")
+		if status.InFlightDispatchCount == 1 {
+			if !status.Alive {
+				t.Fatal("expected bridge to be alive")
+			}
+			break
+		}
+
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for in-flight dispatch count")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	postResponse(t, testServer.URL, token, wire.HttpResponse{
+		OutboundTraceID: "ot_123",
+		Status:          200,
+		Body:            base64.StdEncoding.EncodeToString([]byte(`ok`)),
+	})
+
+	if err := <-outcomeCh; err != nil {
+		t.Fatalf("dispatch outcome failed: %v", err)
+	}
+}
+
 func newTestServer() (*Server, string) {
 	token := "bridge-token"
 	server := NewServer(Config{
@@ -268,6 +398,8 @@ func postHeartbeat(t *testing.T, baseURL string, token string) {
 		BridgeVersion: "dev",
 		OS:            "darwin",
 		Arch:          "arm64",
+		UptimeSec:     42,
+		InFlight:      3,
 		Hostname:      "test-host",
 	})))
 	if err != nil {
@@ -285,6 +417,34 @@ func postHeartbeat(t *testing.T, baseURL string, token string) {
 		body, _ := io.ReadAll(response.Body)
 		t.Fatalf("unexpected heartbeat status %d: %s", response.StatusCode, string(body))
 	}
+}
+
+func getBridgeStatus(t *testing.T, baseURL string, bridgeID string) wire.BridgeStatusResponse {
+	t.Helper()
+
+	request, err := http.NewRequest(http.MethodGet, baseURL+wire.BridgeStatusPathPrefix+bridgeID+wire.BridgeStatusPathSuffix, nil)
+	if err != nil {
+		t.Fatalf("create bridge status request: %v", err)
+	}
+	request.Header.Set(bridgeHubSecretHeader, "internal-secret")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("bridge status request failed: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("unexpected bridge status %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var parsed wire.BridgeStatusResponse
+	if err := json.NewDecoder(response.Body).Decode(&parsed); err != nil {
+		t.Fatalf("decode bridge status response: %v", err)
+	}
+
+	return parsed
 }
 
 type staticVerifier struct {

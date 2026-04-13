@@ -47,9 +47,10 @@ type Server struct {
 }
 
 type bridgeState struct {
-	waiters       []chan *dispatchState
-	pending       []*dispatchState
-	lastHeartbeat time.Time
+	waiters              []chan *dispatchState
+	pending              []*dispatchState
+	lastHeartbeat        time.Time
+	lastHeartbeatPayload *wire.HeartbeatRequest
 }
 
 type dispatchState struct {
@@ -93,6 +94,7 @@ func (server *Server) Handler() http.Handler {
 	mux.HandleFunc(wire.HeartbeatPath, server.handleHeartbeat)
 	mux.HandleFunc(wire.ResponsePathPrefix, server.handleResponse)
 	mux.HandleFunc(wire.DispatchPathPrefix, server.handleDispatch)
+	mux.HandleFunc(wire.BridgeStatusPathPrefix, server.handleBridgeStatus)
 	return mux
 }
 
@@ -138,7 +140,7 @@ func (server *Server) handleHeartbeat(writer http.ResponseWriter, request *http.
 		return
 	}
 
-	server.refreshHeartbeat(claims.BridgeID)
+	server.refreshHeartbeat(claims.BridgeID, heartbeat)
 	encodeJSON(writer, http.StatusOK, wire.HeartbeatResponse{
 		LatestVersion:  build.Version,
 		MinimumVersion: build.Version,
@@ -267,6 +269,32 @@ func (server *Server) handleDispatch(writer http.ResponseWriter, request *http.R
 	writeReject(writer, statusCode, code, message)
 }
 
+func (server *Server) handleBridgeStatus(writer http.ResponseWriter, request *http.Request) {
+	if request.Header.Get(bridgeHubSecretHeader) != server.hubSecret {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if request.Method != http.MethodGet {
+		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := strings.TrimPrefix(request.URL.Path, wire.BridgeStatusPathPrefix)
+	if path == request.URL.Path || !strings.HasSuffix(path, wire.BridgeStatusPathSuffix) {
+		http.Error(writer, "not found", http.StatusNotFound)
+		return
+	}
+
+	bridgeID := strings.TrimSuffix(path, wire.BridgeStatusPathSuffix)
+	bridgeID = strings.TrimSuffix(bridgeID, "/")
+	if bridgeID == "" {
+		http.Error(writer, "missing bridge id", http.StatusBadRequest)
+		return
+	}
+
+	encodeJSON(writer, http.StatusOK, server.getBridgeStatus(bridgeID))
+}
+
 func (server *Server) authenticateEdge(writer http.ResponseWriter, request *http.Request) (verifier.Claims, bool) {
 	if request.Method != http.MethodPost {
 		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
@@ -297,12 +325,13 @@ func (server *Server) authenticateEdge(writer http.ResponseWriter, request *http
 	return claims, true
 }
 
-func (server *Server) refreshHeartbeat(bridgeID string) {
+func (server *Server) refreshHeartbeat(bridgeID string, heartbeat wire.HeartbeatRequest) {
 	server.mu.Lock()
 	defer server.mu.Unlock()
 
 	state := server.getBridgeState(bridgeID)
 	state.lastHeartbeat = server.now()
+	state.lastHeartbeatPayload = &heartbeat
 	server.cleanupCompleted()
 }
 
@@ -469,6 +498,46 @@ func (server *Server) wasOfflineLocked(bridgeID string) bool {
 	}
 
 	return server.now().Sub(state.lastHeartbeat) > heartbeatTTL
+}
+
+func (server *Server) getBridgeStatus(bridgeID string) wire.BridgeStatusResponse {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+
+	state := server.getBridgeState(bridgeID)
+	status := wire.BridgeStatusResponse{
+		BridgeID:              bridgeID,
+		Alive:                 !server.wasOfflineLocked(bridgeID),
+		WaiterCount:           uint32(len(state.waiters)),
+		PendingDispatchCount:  uint32(len(state.pending)),
+		InFlightDispatchCount: uint32(server.countInFlightForBridgeLocked(bridgeID)),
+	}
+
+	if !state.lastHeartbeat.IsZero() {
+		lastHeartbeatAtUnixMs := uint64(state.lastHeartbeat.UnixMilli())
+		status.LastHeartbeatAtUnixMs = &lastHeartbeatAtUnixMs
+	}
+
+	if state.lastHeartbeatPayload != nil {
+		status.BridgeVersion = state.lastHeartbeatPayload.BridgeVersion
+		status.Hostname = state.lastHeartbeatPayload.Hostname
+		status.OS = state.lastHeartbeatPayload.OS
+		status.Arch = state.lastHeartbeatPayload.Arch
+		status.UptimeSec = state.lastHeartbeatPayload.UptimeSec
+		status.EdgeInFlight = state.lastHeartbeatPayload.InFlight
+	}
+
+	return status
+}
+
+func (server *Server) countInFlightForBridgeLocked(bridgeID string) int {
+	count := 0
+	for _, dispatch := range server.inFlight {
+		if dispatch.bridgeID == bridgeID {
+			count++
+		}
+	}
+	return count
 }
 
 func (server *Server) getBridgeState(bridgeID string) *bridgeState {

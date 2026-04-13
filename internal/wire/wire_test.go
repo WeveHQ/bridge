@@ -37,3 +37,37 @@ func TestPollResponseRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip mismatch: %#v != %#v", value, roundTrip)
 	}
 }
+
+func TestBridgeStatusResponseRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	lastHeartbeatAtUnixMs := uint64(12345)
+	value := BridgeStatusResponse{
+		BridgeID:              "brg_123",
+		Alive:                 true,
+		LastHeartbeatAtUnixMs: &lastHeartbeatAtUnixMs,
+		WaiterCount:           2,
+		PendingDispatchCount:  1,
+		InFlightDispatchCount: 3,
+		BridgeVersion:         "v1.2.3",
+		Hostname:              "edge-host",
+		OS:                    "linux",
+		Arch:                  "amd64",
+		UptimeSec:             600,
+		EdgeInFlight:          4,
+	}
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+
+	var roundTrip BridgeStatusResponse
+	if err := json.Unmarshal(data, &roundTrip); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(value, roundTrip) {
+		t.Fatalf("round-trip mismatch: %#v != %#v", value, roundTrip)
+	}
+}

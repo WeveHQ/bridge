@@ -9,6 +9,8 @@ const (
 	HeartbeatPath          = V1PathPrefix + "/heartbeat"
 	ResponsePathPrefix     = V1PathPrefix + "/response/"
 	DispatchPathPrefix     = "/v1/dispatch/"
+	BridgeStatusPathPrefix = "/v1/bridges/"
+	BridgeStatusPathSuffix = "/status"
 	BridgeOfflineCode      = "bridge_offline"
 	BridgeRateLimitedCode  = "bridge_rate_limited"
 	BridgeRequestTooLarge  = "bridge_request_too_large"
@@ -98,6 +100,21 @@ type HeartbeatRequest struct {
 type HeartbeatResponse struct {
 	LatestVersion  string `json:"latestVersion"`
 	MinimumVersion string `json:"minimumVersion"`
+}
+
+type BridgeStatusResponse struct {
+	BridgeID              string  `json:"bridgeId"`
+	Alive                 bool    `json:"alive"`
+	LastHeartbeatAtUnixMs *uint64 `json:"lastHeartbeatAtUnixMs,omitempty"`
+	WaiterCount           uint32  `json:"waiterCount"`
+	PendingDispatchCount  uint32  `json:"pendingDispatchCount"`
+	InFlightDispatchCount uint32  `json:"inFlightDispatchCount"`
+	BridgeVersion         string  `json:"bridgeVersion,omitempty"`
+	Hostname              string  `json:"hostname,omitempty"`
+	OS                    string  `json:"os,omitempty"`
+	Arch                  string  `json:"arch,omitempty"`
+	UptimeSec             uint64  `json:"uptimeSec,omitempty"`
+	EdgeInFlight          uint32  `json:"edgeInFlight,omitempty"`
 }
 
 func MustJSON(value any) []byte {
