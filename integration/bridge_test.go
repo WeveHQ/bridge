@@ -43,20 +43,20 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	verifyURL := startVerifier(t, token, "verifier-secret")
 
 	hubCmd := startProcess(t, binaryPath, []string{"hub", "--listen=" + hubAddr}, []string{
-		"WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_URL=" + verifyURL,
-		"WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET=verifier-secret",
+		"WEVE_BRIDGE_HUB_TOKEN_VERIFIER_URL=" + verifyURL,
+		"WEVE_BRIDGE_HUB_TOKEN_VERIFIER_SECRET=verifier-secret",
 		"WEVE_BRIDGE_HUB_SECRET=internal-secret",
-		"WEVE_BRIDGE_POLL_HOLD_SECONDS=1",
-		"WEVE_BRIDGE_GLOBAL_IN_FLIGHT=8",
+		"WEVE_BRIDGE_HUB_POLL_HOLD_SECONDS=1",
+		"WEVE_BRIDGE_HUB_GLOBAL_IN_FLIGHT=8",
 	})
 	defer stopProcess(hubCmd)
 
 	waitForHub(t, "http://"+hubAddr)
 
 	edgeCmd := startProcess(t, binaryPath, []string{"edge", "--token=" + token, "--hub-url=http://" + hubAddr}, []string{
-		"WEVE_BRIDGE_POLL_CONCURRENCY=2",
-		"WEVE_BRIDGE_HEARTBEAT_SECONDS=1",
-		"WEVE_BRIDGE_POLL_TIMEOUT_MS=1500",
+		"WEVE_BRIDGE_EDGE_POLL_CONCURRENCY=2",
+		"WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS=1",
+		"WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS=1500",
 	})
 	defer stopProcess(edgeCmd)
 

@@ -61,22 +61,22 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_TOKEN")
 	}
 
-	hubURL := firstNonEmpty(inputs.HubURL, os.Getenv("WEVE_BRIDGE_URL"))
+	hubURL := firstNonEmpty(inputs.HubURL, os.Getenv("WEVE_BRIDGE_EDGE_HUB_URL"))
 	if hubURL == "" {
-		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_URL")
+		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_HUB_URL")
 	}
 
-	pollConcurrency, err := parseInt(firstNonEmpty(inputs.PollConcurrency, os.Getenv("WEVE_BRIDGE_POLL_CONCURRENCY")), defaultPollConcurrency)
+	pollConcurrency, err := parseInt(firstNonEmpty(inputs.PollConcurrency, os.Getenv("WEVE_BRIDGE_EDGE_POLL_CONCURRENCY")), defaultPollConcurrency)
 	if err != nil {
 		return EdgeConfig{}, fmt.Errorf("parse poll concurrency: %w", err)
 	}
 
-	heartbeatSeconds, err := parseInt(firstNonEmpty(inputs.HeartbeatSeconds, os.Getenv("WEVE_BRIDGE_HEARTBEAT_SECONDS")), defaultHeartbeatSeconds)
+	heartbeatSeconds, err := parseInt(firstNonEmpty(inputs.HeartbeatSeconds, os.Getenv("WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS")), defaultHeartbeatSeconds)
 	if err != nil {
 		return EdgeConfig{}, fmt.Errorf("parse heartbeat seconds: %w", err)
 	}
 
-	pollTimeoutMS, err := parseInt(firstNonEmpty(inputs.PollTimeoutMS, os.Getenv("WEVE_BRIDGE_POLL_TIMEOUT_MS")), defaultPollTimeoutMs)
+	pollTimeoutMS, err := parseInt(firstNonEmpty(inputs.PollTimeoutMS, os.Getenv("WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS")), defaultPollTimeoutMs)
 	if err != nil {
 		return EdgeConfig{}, fmt.Errorf("parse poll timeout ms: %w", err)
 	}
@@ -91,19 +91,19 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 }
 
 func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
-	listenAddr := firstNonEmpty(inputs.ListenAddr, os.Getenv("WEVE_BRIDGE_LISTEN_ADDR"))
+	listenAddr := firstNonEmpty(inputs.ListenAddr, os.Getenv("WEVE_BRIDGE_HUB_LISTEN_ADDR"))
 	if listenAddr == "" {
 		listenAddr = defaultListenAddr
 	}
 
-	verifyTokenURL := firstNonEmpty(inputs.TokenVerifierURL, os.Getenv("WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_URL"))
+	verifyTokenURL := firstNonEmpty(inputs.TokenVerifierURL, os.Getenv("WEVE_BRIDGE_HUB_TOKEN_VERIFIER_URL"))
 	if verifyTokenURL == "" {
-		return HubConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_URL")
+		return HubConfig{}, errors.New("missing WEVE_BRIDGE_HUB_TOKEN_VERIFIER_URL")
 	}
 
-	verifyTokenSecret := firstNonEmpty(inputs.TokenVerifierSecret, os.Getenv("WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET"))
+	verifyTokenSecret := firstNonEmpty(inputs.TokenVerifierSecret, os.Getenv("WEVE_BRIDGE_HUB_TOKEN_VERIFIER_SECRET"))
 	if verifyTokenSecret == "" {
-		return HubConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET")
+		return HubConfig{}, errors.New("missing WEVE_BRIDGE_HUB_TOKEN_VERIFIER_SECRET")
 	}
 
 	hubSecret := firstNonEmpty(inputs.HubSecret, os.Getenv("WEVE_BRIDGE_HUB_SECRET"))
@@ -111,22 +111,22 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		return HubConfig{}, errors.New("missing WEVE_BRIDGE_HUB_SECRET")
 	}
 
-	verifyTimeoutMS, err := parseInt(firstNonEmpty(inputs.VerifyTimeoutMS, os.Getenv("WEVE_BRIDGE_VERIFY_TIMEOUT_MS")), defaultVerifyTimeoutMs)
+	verifyTimeoutMS, err := parseInt(firstNonEmpty(inputs.VerifyTimeoutMS, os.Getenv("WEVE_BRIDGE_HUB_VERIFY_TIMEOUT_MS")), defaultVerifyTimeoutMs)
 	if err != nil {
 		return HubConfig{}, fmt.Errorf("parse verify timeout ms: %w", err)
 	}
 
-	verifyCacheSeconds, err := parseInt(firstNonEmpty(inputs.VerifyCacheSeconds, os.Getenv("WEVE_BRIDGE_VERIFY_CACHE_SECONDS")), defaultVerifyCacheSec)
+	verifyCacheSeconds, err := parseInt(firstNonEmpty(inputs.VerifyCacheSeconds, os.Getenv("WEVE_BRIDGE_HUB_VERIFY_CACHE_SECONDS")), defaultVerifyCacheSec)
 	if err != nil {
 		return HubConfig{}, fmt.Errorf("parse verify cache seconds: %w", err)
 	}
 
-	pollHoldSeconds, err := parseInt(firstNonEmpty(inputs.PollHoldSeconds, os.Getenv("WEVE_BRIDGE_POLL_HOLD_SECONDS")), 25)
+	pollHoldSeconds, err := parseInt(firstNonEmpty(inputs.PollHoldSeconds, os.Getenv("WEVE_BRIDGE_HUB_POLL_HOLD_SECONDS")), 25)
 	if err != nil {
 		return HubConfig{}, fmt.Errorf("parse poll hold seconds: %w", err)
 	}
 
-	globalInFlight, err := parseInt(firstNonEmpty(inputs.GlobalInFlight, os.Getenv("WEVE_BRIDGE_GLOBAL_IN_FLIGHT")), 64)
+	globalInFlight, err := parseInt(firstNonEmpty(inputs.GlobalInFlight, os.Getenv("WEVE_BRIDGE_HUB_GLOBAL_IN_FLIGHT")), 64)
 	if err != nil {
 		return HubConfig{}, fmt.Errorf("parse global in-flight: %w", err)
 	}

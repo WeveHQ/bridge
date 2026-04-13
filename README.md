@@ -46,7 +46,7 @@ Scoped to HTTP request/responses only. This NOT a VPN and NOT a SOCKS tunnel. We
 
 1. In the Weve dashboard, open **Settings → Connectors → Private Network Access → New bridge**.
 2. Copy the enrollment token.
-3. Set `WEVE_BRIDGE_EDGE_TOKEN`, `WEVE_BRIDGE_URL` and start the container.
+3. Set `WEVE_BRIDGE_EDGE_TOKEN`, `WEVE_BRIDGE_EDGE_HUB_URL` and start the container.
 4. The dashboard shows the bridge as `connected` within 60 seconds.
 
 Tokens are scoped to your tenant and a single bridge. Treat them as secrets.
@@ -58,8 +58,8 @@ Tokens are scoped to your tenant and a single bridge. Treat them as secrets.
 ```bash
 docker run -d --name weve-bridge \
   -e WEVE_BRIDGE_EDGE_TOKEN=$WEVE_BRIDGE_EDGE_TOKEN \
-  -e WEVE_BRIDGE_URL=$WEVE_BRIDGE_URL \
-  -e WEVE_BRIDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal \
+  -e WEVE_BRIDGE_EDGE_HUB_URL=$WEVE_BRIDGE_EDGE_HUB_URL \
+  -e WEVE_BRIDGE_EDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal \
   ghcr.io/wevehq/weve-bridge:latest edge
 ```
 
@@ -101,9 +101,9 @@ All configuration is through environment variables.
 | Variable                       | Required | Default | Purpose                                           |
 | ------------------------------ | -------- | ------- | ------------------------------------------------- |
 | `WEVE_BRIDGE_EDGE_TOKEN`            | yes      | —       | Enrollment token from the Weve dashboard          |
-| `WEVE_BRIDGE_URL`              | yes      | —       | Bridge endpoint for your tenant (from dashboard)  |
-| `WEVE_BRIDGE_ALLOWED_HOSTS`    | no       | —       | Comma-separated internal host allow-list          |
-| `WEVE_BRIDGE_POLL_CONCURRENCY` | no       | `4`     | Concurrent in-flight requests this edge handles   |
+| `WEVE_BRIDGE_EDGE_HUB_URL`              | yes      | —       | Bridge endpoint for your tenant (from dashboard)  |
+| `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`    | no       | —       | Comma-separated internal host allow-list          |
+| `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY` | no       | `4`     | Concurrent in-flight requests this edge handles   |
 | `WEVE_BRIDGE_LOG_LEVEL`        | no       | `info`  | `debug` / `info` / `warn` / `error`               |
 | `WEVE_BRIDGE_LOG_FORMAT`       | no       | `json`  | `json` / `text`                                   |
 | `HTTPS_PROXY`                  | no       | —       | Corporate egress proxy                            |
@@ -112,10 +112,10 @@ All configuration is through environment variables.
 
 ### Allow-list
 
-`WEVE_BRIDGE_ALLOWED_HOSTS` optional, but recommended (defense in depth). Any request whose target host is not on this list is rejected by the edge before it hits the network. Weve Cloud cannot bypass it. Leave it unset to allow all.
+`WEVE_BRIDGE_EDGE_ALLOWED_HOSTS` optional, but recommended (defense in depth). Any request whose target host is not on this list is rejected by the edge before it hits the network. Weve Cloud cannot bypass it. Leave it unset to allow all.
 
 ```bash
-WEVE_BRIDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal,jira.corp.internal
+WEVE_BRIDGE_EDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal,jira.corp.internal
 ```
 
 ### Corporate proxy
@@ -132,7 +132,7 @@ Point `SSL_CERT_FILE` at your CA bundle. The edge does not pin certificates — 
 | --------------------------------------- | -------------------------------------------- |
 | `edge failed to connect: tls handshake` | TLS-intercepting proxy — set `SSL_CERT_FILE` |
 | `407 proxy authentication required`     | `HTTPS_PROXY` missing credentials            |
-| `host not allowed: <host>`              | Target not in `WEVE_BRIDGE_ALLOWED_HOSTS`    |
+| `host not allowed: <host>`              | Target not in `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`    |
 | `token invalid`                         | Token for the wrong environment, or revoked  |
 | Dashboard shows `disconnected`          | Outbound 443 blocked, or edge killed         |
 | `minimum version required`              | Upgrade the image                            |
