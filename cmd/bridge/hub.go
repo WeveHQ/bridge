@@ -40,10 +40,11 @@ func runHub(ctx context.Context, args []string) error {
 	}
 
 	server := hub.NewServer(hub.Config{
-		TokenVerifier:  tokenVerifier,
-		HubSecret:      cfg.HubSecret,
-		PollHold:       time.Duration(cfg.PollHoldSeconds) * time.Second,
-		GlobalInFlight: cfg.GlobalInFlight,
+		TokenVerifier:             tokenVerifier,
+		HubSecret:                 cfg.HubSecret,
+		PollHold:                  time.Duration(cfg.PollHoldSeconds) * time.Second,
+		GlobalInFlight:            cfg.GlobalInFlight,
+		PerEdgeMaxPollConcurrency: cfg.PerEdgeMaxPollConcurrency,
 	})
 
 	httpServer := &http.Server{

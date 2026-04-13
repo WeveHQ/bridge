@@ -23,7 +23,12 @@ import (
 	"github.com/WeveHQ/bridge/internal/wire"
 )
 
-const retryInterval = 10 * time.Second
+const (
+	retryInterval          = 10 * time.Second
+	pollRateLimitedBackoff = 1 * time.Second
+)
+
+var errPollRateLimited = errors.New("poll rate limited by hub")
 
 type Config struct {
 	Token             string
@@ -118,6 +123,15 @@ func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
 				return
 			}
 
+			if errors.Is(err, errPollRateLimited) {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(pollRateLimitedBackoff):
+					continue
+				}
+			}
+
 			fmt.Fprintf(os.Stderr, "weve-bridge: poll failed: %v, retrying in %s\n", err, retryInterval)
 			select {
 			case <-ctx.Done():
@@ -168,6 +182,10 @@ func (runner *Runner) poll(ctx context.Context) (wire.PollResponse, bool, error)
 
 	if response.StatusCode == http.StatusNoContent {
 		return wire.PollResponse{}, false, nil
+	}
+	if response.StatusCode == http.StatusTooManyRequests {
+		_, _ = io.Copy(io.Discard, response.Body)
+		return wire.PollResponse{}, false, errPollRateLimited
 	}
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(response.Body)

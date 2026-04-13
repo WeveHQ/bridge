@@ -13,6 +13,7 @@ const (
 	BridgeStatusPathSuffix = "/status"
 	BridgeOfflineCode      = "bridge_offline"
 	BridgeRateLimitedCode  = "bridge_rate_limited"
+	BridgePollRateLimited  = "bridge_poll_rate_limited"
 	BridgeRequestTooLarge  = "bridge_request_too_large"
 	BridgeResponseTooLarge = "bridge_response_too_large"
 	BridgeResponseRejected = "bridge_response_rejected"

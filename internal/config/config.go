@@ -36,25 +36,27 @@ type EdgeInputs struct {
 }
 
 type HubConfig struct {
-	ListenAddr          string
-	TokenVerifierURL    string
-	TokenVerifierSecret string
-	VerifyTimeoutMS     int
-	VerifyCacheSeconds  int
-	HubSecret           string
-	PollHoldSeconds     int
-	GlobalInFlight      int
+	ListenAddr                string
+	TokenVerifierURL          string
+	TokenVerifierSecret       string
+	VerifyTimeoutMS           int
+	VerifyCacheSeconds        int
+	HubSecret                 string
+	PollHoldSeconds           int
+	GlobalInFlight            int
+	PerEdgeMaxPollConcurrency int
 }
 
 type HubInputs struct {
-	ListenAddr          string
-	TokenVerifierURL    string
-	TokenVerifierSecret string
-	VerifyTimeoutMS     string
-	VerifyCacheSeconds  string
-	HubSecret           string
-	PollHoldSeconds     string
-	GlobalInFlight      string
+	ListenAddr                string
+	TokenVerifierURL          string
+	TokenVerifierSecret       string
+	VerifyTimeoutMS           string
+	VerifyCacheSeconds        string
+	HubSecret                 string
+	PollHoldSeconds           string
+	GlobalInFlight            string
+	PerEdgeMaxPollConcurrency string
 }
 
 func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
@@ -155,15 +157,24 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		return HubConfig{}, fmt.Errorf("parse global in-flight: %w", err)
 	}
 
+	perEdgeMaxPollConcurrency, err := parseInt(firstNonEmpty(inputs.PerEdgeMaxPollConcurrency, os.Getenv("WEVE_BRIDGE_HUB_PER_EDGE_MAX_POLL_CONCURRENCY")), 0)
+	if err != nil {
+		return HubConfig{}, fmt.Errorf("parse per-edge max poll concurrency: %w", err)
+	}
+	if perEdgeMaxPollConcurrency < 0 {
+		return HubConfig{}, errors.New("per-edge max poll concurrency must be non-negative")
+	}
+
 	return HubConfig{
-		ListenAddr:          listenAddr,
-		TokenVerifierURL:    strings.TrimRight(verifyTokenURL, "/"),
-		TokenVerifierSecret: verifyTokenSecret,
-		VerifyTimeoutMS:     verifyTimeoutMS,
-		VerifyCacheSeconds:  verifyCacheSeconds,
-		HubSecret:           hubSecret,
-		PollHoldSeconds:     pollHoldSeconds,
-		GlobalInFlight:      globalInFlight,
+		ListenAddr:                listenAddr,
+		TokenVerifierURL:          strings.TrimRight(verifyTokenURL, "/"),
+		TokenVerifierSecret:       verifyTokenSecret,
+		VerifyTimeoutMS:           verifyTimeoutMS,
+		VerifyCacheSeconds:        verifyCacheSeconds,
+		HubSecret:                 hubSecret,
+		PollHoldSeconds:           pollHoldSeconds,
+		GlobalInFlight:            globalInFlight,
+		PerEdgeMaxPollConcurrency: perEdgeMaxPollConcurrency,
 	}, nil
 }
 

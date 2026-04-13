@@ -25,25 +25,28 @@ const (
 )
 
 type Config struct {
-	TokenVerifier  verifier.TokenVerifier
-	HubSecret      string
-	PollHold       time.Duration
-	GlobalInFlight int
-	Now            func() time.Time
+	TokenVerifier             verifier.TokenVerifier
+	HubSecret                 string
+	PollHold                  time.Duration
+	GlobalInFlight            int
+	PerEdgeMaxPollConcurrency int
+	Now                       func() time.Time
 }
 
 type Server struct {
-	now            func() time.Time
-	tokenVerifier  verifier.TokenVerifier
-	hubSecret      string
-	pollHold       time.Duration
-	globalInFlight int
+	now                       func() time.Time
+	tokenVerifier             verifier.TokenVerifier
+	hubSecret                 string
+	pollHold                  time.Duration
+	globalInFlight            int
+	perEdgeMaxPollConcurrency int
 
-	mu        sync.Mutex
-	bridges   map[string]*bridgeState
-	inFlight  map[string]*dispatchState
-	completed map[string]time.Time
-	draining  bool
+	mu            sync.Mutex
+	bridges       map[string]*bridgeState
+	inFlight      map[string]*dispatchState
+	completed     map[string]time.Time
+	pollsByBridge map[string]int
+	draining      bool
 }
 
 type bridgeState struct {
@@ -77,14 +80,16 @@ func NewServer(cfg Config) *Server {
 	}
 
 	return &Server{
-		now:            now,
-		tokenVerifier:  cfg.TokenVerifier,
-		hubSecret:      cfg.HubSecret,
-		pollHold:       cfg.PollHold,
-		globalInFlight: cfg.GlobalInFlight,
-		bridges:        map[string]*bridgeState{},
-		inFlight:       map[string]*dispatchState{},
-		completed:      map[string]time.Time{},
+		now:                       now,
+		tokenVerifier:             cfg.TokenVerifier,
+		hubSecret:                 cfg.HubSecret,
+		pollHold:                  cfg.PollHold,
+		globalInFlight:            cfg.GlobalInFlight,
+		perEdgeMaxPollConcurrency: cfg.PerEdgeMaxPollConcurrency,
+		bridges:                   map[string]*bridgeState{},
+		inFlight:                  map[string]*dispatchState{},
+		completed:                 map[string]time.Time{},
+		pollsByBridge:             map[string]int{},
 	}
 }
 
@@ -115,6 +120,12 @@ func (server *Server) handlePoll(writer http.ResponseWriter, request *http.Reque
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	if !server.tryAcquirePollSlot(claims.BridgeID) {
+		writeReject(writer, http.StatusTooManyRequests, wire.BridgePollRateLimited, "per-edge poll concurrency limit reached")
+		return
+	}
+	defer server.releasePollSlot(claims.BridgeID)
 
 	dispatch, ok := server.acquireDispatch(request.Context(), claims.BridgeID)
 	if !ok {
@@ -364,6 +375,37 @@ func (server *Server) acquireDispatch(ctx context.Context, bridgeID string) (*di
 		server.removeWaiter(bridgeID, waiter)
 		return nil, false
 	}
+}
+
+func (server *Server) tryAcquirePollSlot(bridgeID string) bool {
+	if server.perEdgeMaxPollConcurrency <= 0 {
+		return true
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+
+	if server.pollsByBridge[bridgeID] >= server.perEdgeMaxPollConcurrency {
+		return false
+	}
+	server.pollsByBridge[bridgeID]++
+	return true
+}
+
+func (server *Server) releasePollSlot(bridgeID string) {
+	if server.perEdgeMaxPollConcurrency <= 0 {
+		return
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+
+	count := server.pollsByBridge[bridgeID]
+	if count <= 1 {
+		delete(server.pollsByBridge, bridgeID)
+		return
+	}
+	server.pollsByBridge[bridgeID] = count - 1
 }
 
 func (server *Server) removeWaiter(bridgeID string, waiter chan *dispatchState) {
