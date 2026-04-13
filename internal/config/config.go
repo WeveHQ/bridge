@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/WeveHQ/bridge/internal/logging"
 )
 
 const (
@@ -15,7 +17,19 @@ const (
 	defaultListenAddr       = ":8080"
 	defaultVerifyTimeoutMs  = 2000
 	defaultVerifyCacheSec   = 30
+	defaultLogLevel         = logging.LevelInfo
+	defaultLogFormat        = logging.FormatJSON
 )
+
+type LogConfig struct {
+	Level  string
+	Format string
+}
+
+type LogInputs struct {
+	Level  string
+	Format string
+}
 
 type EdgeConfig struct {
 	Token            string
@@ -24,6 +38,7 @@ type EdgeConfig struct {
 	HeartbeatSeconds int
 	PollTimeoutMS    int
 	AllowedHosts     []string
+	Log              LogConfig
 }
 
 type EdgeInputs struct {
@@ -33,6 +48,7 @@ type EdgeInputs struct {
 	HeartbeatSeconds string
 	PollTimeoutMS    string
 	AllowedHosts     string
+	Log              LogInputs
 }
 
 type HubConfig struct {
@@ -45,6 +61,7 @@ type HubConfig struct {
 	PollHoldSeconds           int
 	GlobalInFlight            int
 	PerEdgeMaxPollConcurrency int
+	Log                       LogConfig
 }
 
 type HubInputs struct {
@@ -57,6 +74,7 @@ type HubInputs struct {
 	PollHoldSeconds           string
 	GlobalInFlight            string
 	PerEdgeMaxPollConcurrency string
+	Log                       LogInputs
 }
 
 func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
@@ -86,6 +104,10 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 	}
 
 	allowedHosts := parseAllowedHosts(firstNonEmpty(inputs.AllowedHosts, os.Getenv("WEVE_BRIDGE_EDGE_ALLOWED_HOSTS")))
+	logCfg, err := parseLogConfig(inputs.Log)
+	if err != nil {
+		return EdgeConfig{}, err
+	}
 
 	return EdgeConfig{
 		Token:            token,
@@ -94,6 +116,7 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 		HeartbeatSeconds: heartbeatSeconds,
 		PollTimeoutMS:    pollTimeoutMS,
 		AllowedHosts:     allowedHosts,
+		Log:              logCfg,
 	}, nil
 }
 
@@ -165,6 +188,11 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		return HubConfig{}, errors.New("per-edge max poll concurrency must be non-negative")
 	}
 
+	logCfg, err := parseLogConfig(inputs.Log)
+	if err != nil {
+		return HubConfig{}, err
+	}
+
 	return HubConfig{
 		ListenAddr:                listenAddr,
 		TokenVerifierURL:          strings.TrimRight(verifyTokenURL, "/"),
@@ -175,6 +203,30 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		PollHoldSeconds:           pollHoldSeconds,
 		GlobalInFlight:            globalInFlight,
 		PerEdgeMaxPollConcurrency: perEdgeMaxPollConcurrency,
+		Log:                       logCfg,
+	}, nil
+}
+
+func parseLogConfig(inputs LogInputs) (LogConfig, error) {
+	level := firstNonEmpty(inputs.Level, os.Getenv("WEVE_BRIDGE_LOG_LEVEL"))
+	if level == "" {
+		level = defaultLogLevel
+	}
+	if _, err := logging.ParseLevel(level); err != nil {
+		return LogConfig{}, fmt.Errorf("parse log level: %w", err)
+	}
+
+	format := firstNonEmpty(inputs.Format, os.Getenv("WEVE_BRIDGE_LOG_FORMAT"))
+	if format == "" {
+		format = defaultLogFormat
+	}
+	if _, err := logging.ParseFormat(format); err != nil {
+		return LogConfig{}, fmt.Errorf("parse log format: %w", err)
+	}
+
+	return LogConfig{
+		Level:  strings.ToLower(strings.TrimSpace(level)),
+		Format: strings.ToLower(strings.TrimSpace(format)),
 	}, nil
 }
 

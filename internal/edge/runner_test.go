@@ -5,14 +5,17 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/WeveHQ/bridge/internal/hub"
+	"github.com/WeveHQ/bridge/internal/logging"
 	"github.com/WeveHQ/bridge/internal/verifier"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
@@ -233,6 +236,99 @@ func TestRunnerBridgesHubDispatchToTarget(t *testing.T) {
 	}
 	if string(body) != `{"source":"edge"}` {
 		t.Fatalf("unexpected dispatch body: %s", string(body))
+	}
+}
+
+func TestRunnerLogsHeartbeatTransitions(t *testing.T) {
+	var buffer bytes.Buffer
+	logger, err := logging.New(&buffer, logging.Config{
+		Level:  logging.LevelInfo,
+		Format: logging.FormatText,
+	})
+	if err != nil {
+		t.Fatalf("new logger: %v", err)
+	}
+
+	runner := NewRunner(Config{
+		HubURL:            "https://hub.example",
+		PollConcurrency:   1,
+		HeartbeatInterval: time.Second,
+		PollTimeout:       time.Second,
+		Logger:            logger,
+	})
+
+	runner.markHeartbeatFailure(errors.New("boom"))
+	runner.markHeartbeatFailure(errors.New("still boom"))
+	runner.markHeartbeatSuccess()
+	runner.markHeartbeatFailure(errors.New("boom again"))
+	runner.markHeartbeatSuccess()
+
+	logs := buffer.String()
+	if count := strings.Count(logs, "heartbeat failed"); count != 2 {
+		t.Fatalf("expected two heartbeat failure logs, got %d: %s", count, logs)
+	}
+	if count := strings.Count(logs, "connected to hub"); count != 1 {
+		t.Fatalf("expected one initial connection log, got %d: %s", count, logs)
+	}
+	if count := strings.Count(logs, "heartbeat recovered"); count != 1 {
+		t.Fatalf("expected one heartbeat recovered log, got %d: %s", count, logs)
+	}
+}
+
+func TestHandleDispatchLogsSummary(t *testing.T) {
+	var buffer bytes.Buffer
+	logger, err := logging.New(&buffer, logging.Config{
+		Level:  logging.LevelInfo,
+		Format: logging.FormatText,
+	})
+	if err != nil {
+		t.Fatalf("new logger: %v", err)
+	}
+
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusAccepted)
+		_, _ = writer.Write([]byte(`ok`))
+	}))
+	defer func() { target.Close() }()
+
+	hubServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if !strings.HasPrefix(request.URL.Path, wire.ResponsePathPrefix) {
+			t.Fatalf("unexpected path: %s", request.URL.Path)
+		}
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer func() { hubServer.Close() }()
+
+	runner := NewRunner(Config{
+		Token:             "bridge-token",
+		HubURL:            hubServer.URL,
+		PollConcurrency:   1,
+		HeartbeatInterval: time.Second,
+		PollTimeout:       time.Second,
+		Logger:            logger,
+	})
+
+	err = runner.handleDispatch(context.Background(), wire.PollResponse{
+		OutboundTraceID: "ot_123",
+		Req: wire.HttpRequest{
+			Method:         http.MethodGet,
+			URL:            target.URL,
+			DeadlineUnixMs: uint64(time.Now().Add(time.Second).UnixMilli()),
+		},
+	})
+	if err != nil {
+		t.Fatalf("handle dispatch: %v", err)
+	}
+
+	logs := buffer.String()
+	if !strings.Contains(logs, "dispatch completed") {
+		t.Fatalf("missing dispatch completion log: %s", logs)
+	}
+	if !strings.Contains(logs, "outboundTraceId=ot_123") {
+		t.Fatalf("missing outbound trace id in logs: %s", logs)
+	}
+	if !strings.Contains(logs, "status=202") {
+		t.Fatalf("missing response status in logs: %s", logs)
 	}
 }
 

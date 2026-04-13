@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseEdgeConfig(t *testing.T) {
 	t.Parallel()
@@ -21,6 +24,12 @@ func TestParseEdgeConfig(t *testing.T) {
 	}
 	if cfg.PollTimeoutMS != 15000 {
 		t.Fatalf("unexpected poll timeout: %d", cfg.PollTimeoutMS)
+	}
+	if cfg.Log.Level != "info" {
+		t.Fatalf("unexpected log level: %s", cfg.Log.Level)
+	}
+	if cfg.Log.Format != "json" {
+		t.Fatalf("unexpected log format: %s", cfg.Log.Format)
 	}
 }
 
@@ -50,5 +59,42 @@ func TestParseHubConfigDefaultsListenAddr(t *testing.T) {
 	}
 	if cfg.VerifyCacheSeconds != 30 {
 		t.Fatalf("unexpected verify cache seconds: %d", cfg.VerifyCacheSeconds)
+	}
+	if cfg.Log.Level != "info" {
+		t.Fatalf("unexpected log level: %s", cfg.Log.Level)
+	}
+	if cfg.Log.Format != "json" {
+		t.Fatalf("unexpected log format: %s", cfg.Log.Format)
+	}
+}
+
+func TestParseEdgeConfigRejectsInvalidLogLevel(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseEdgeConfig(EdgeInputs{
+		Token:  "token",
+		HubURL: "https://hub.example",
+		Log: LogInputs{
+			Level: "verbose",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "parse log level") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseHubConfigRejectsInvalidLogFormat(t *testing.T) {
+	t.Parallel()
+
+	_, err := ParseHubConfig(HubInputs{
+		TokenVerifierURL:    "http://127.0.0.1:8181/verify",
+		TokenVerifierSecret: "verifier-secret",
+		HubSecret:           "internal-secret",
+		Log: LogInputs{
+			Format: "pretty",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "parse log format") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -9,17 +9,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/WeveHQ/bridge/internal/build"
+	"github.com/WeveHQ/bridge/internal/logging"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
 
@@ -38,6 +41,7 @@ type Config struct {
 	PollTimeout       time.Duration
 	AllowedHosts      []string
 	Client            *http.Client
+	Logger            *slog.Logger
 }
 
 type Runner struct {
@@ -50,12 +54,22 @@ type Runner struct {
 	allowedHosts      []string
 	startedAt         time.Time
 	inFlight          atomic.Int32
+	logger            *slog.Logger
+
+	stateMu          sync.Mutex
+	connectedLogged  bool
+	heartbeatFailing bool
+	pollFailing      bool
 }
 
 func NewRunner(cfg Config) *Runner {
 	client := cfg.Client
 	if client == nil {
 		client = &http.Client{}
+	}
+	logger := cfg.Logger
+	if logger == nil {
+		logger = logging.Discard()
 	}
 
 	return &Runner{
@@ -67,10 +81,21 @@ func NewRunner(cfg Config) *Runner {
 		pollTimeout:       cfg.PollTimeout,
 		allowedHosts:      cfg.AllowedHosts,
 		startedAt:         time.Now(),
+		logger:            logger,
 	}
 }
 
 func (runner *Runner) Run(ctx context.Context) error {
+	runner.logger.Info("edge starting",
+		"hubURL", runner.hubURL,
+		"pollConcurrency", runner.pollConcurrency,
+		"heartbeatInterval", runner.heartbeatInterval.String(),
+		"pollTimeout", runner.pollTimeout.String(),
+		"allowedHostsCount", len(runner.allowedHosts),
+		"allowListEnabled", len(runner.allowedHosts) > 0,
+	)
+	defer runner.logger.Info("edge stopped")
+
 	heartbeatCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -83,11 +108,13 @@ func (runner *Runner) Run(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
+		runner.logger.Info("edge shutting down", "reason", ctx.Err())
 		return nil
 	case err := <-errCh:
 		if err == nil {
 			return nil
 		}
+		runner.logger.Error("edge runner failed", "error", err)
 		return err
 	}
 }
@@ -98,7 +125,7 @@ func (runner *Runner) runHeartbeatLoop(ctx context.Context, errCh chan<- error) 
 
 	for {
 		if err := runner.sendHeartbeat(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			fmt.Fprintf(os.Stderr, "weve-bridge: heartbeat failed: %v, retrying in %s\n", err, retryInterval)
+			runner.markHeartbeatFailure(err)
 			select {
 			case <-ctx.Done():
 				return
@@ -106,6 +133,8 @@ func (runner *Runner) runHeartbeatLoop(ctx context.Context, errCh chan<- error) 
 				continue
 			}
 		}
+		runner.markHeartbeatSuccess()
+		runner.logger.Debug("heartbeat acknowledged")
 
 		select {
 		case <-ctx.Done():
@@ -124,6 +153,7 @@ func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
 			}
 
 			if errors.Is(err, errPollRateLimited) {
+				runner.markPollFailure(err)
 				select {
 				case <-ctx.Done():
 					return
@@ -132,7 +162,7 @@ func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
 				}
 			}
 
-			fmt.Fprintf(os.Stderr, "weve-bridge: poll failed: %v, retrying in %s\n", err, retryInterval)
+			runner.markPollFailure(err)
 			select {
 			case <-ctx.Done():
 				return
@@ -140,7 +170,9 @@ func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
 				continue
 			}
 		}
+		runner.markPollSuccess()
 		if !ok {
+			runner.logger.Debug("poll returned no work")
 			select {
 			case <-ctx.Done():
 				return
@@ -151,15 +183,37 @@ func (runner *Runner) runPollSlot(ctx context.Context, errCh chan<- error) {
 
 		go runner.runPollSlot(ctx, errCh)
 		runner.inFlight.Add(1)
-		_ = runner.handleDispatch(ctx, dispatch)
+		if err := runner.handleDispatch(ctx, dispatch); err != nil {
+			runner.logger.Warn("dispatch response post failed",
+				"outboundTraceId", dispatch.OutboundTraceID,
+				"error", err,
+			)
+		}
 		runner.inFlight.Add(-1)
 		return
 	}
 }
 
 func (runner *Runner) handleDispatch(ctx context.Context, dispatch wire.PollResponse) error {
+	runner.logger.Debug("dispatch received",
+		"outboundTraceId", dispatch.OutboundTraceID,
+		"method", dispatch.Req.Method,
+		"url", dispatch.Req.URL,
+	)
+
 	response := ExecuteRequest(dispatch.OutboundTraceID, dispatch.Req, runner.allowedHosts)
-	return runner.postResponse(ctx, response)
+	if err := runner.postResponse(ctx, response); err != nil {
+		return err
+	}
+
+	attrs := runner.dispatchLogAttrs(dispatch, response)
+	if response.Meta.Error != nil {
+		runner.logger.Warn("dispatch completed with execution error", attrs...)
+		return nil
+	}
+
+	runner.logger.Info("dispatch completed", attrs...)
+	return nil
 }
 
 func (runner *Runner) poll(ctx context.Context) (wire.PollResponse, bool, error) {
@@ -228,6 +282,100 @@ func (runner *Runner) sendHeartbeat(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (runner *Runner) markHeartbeatFailure(err error) {
+	runner.stateMu.Lock()
+	shouldLog := !runner.heartbeatFailing
+	runner.heartbeatFailing = true
+	runner.stateMu.Unlock()
+
+	if shouldLog {
+		runner.logger.Warn("heartbeat failed",
+			"error", err,
+			"retryIn", retryInterval.String(),
+		)
+	}
+}
+
+func (runner *Runner) markHeartbeatSuccess() {
+	runner.stateMu.Lock()
+	firstSuccess := !runner.connectedLogged
+	recovered := runner.heartbeatFailing
+	runner.connectedLogged = true
+	runner.heartbeatFailing = false
+	runner.stateMu.Unlock()
+
+	if firstSuccess {
+		runner.logger.Info("connected to hub", "hubURL", runner.hubURL)
+		return
+	}
+	if recovered {
+		runner.logger.Info("heartbeat recovered", "hubURL", runner.hubURL)
+	}
+}
+
+func (runner *Runner) markPollFailure(err error) {
+	runner.stateMu.Lock()
+	shouldLog := !runner.pollFailing
+	runner.pollFailing = true
+	runner.stateMu.Unlock()
+
+	message := "poll failed"
+	retryIn := retryInterval
+	if errors.Is(err, errPollRateLimited) {
+		message = "poll rate limited by hub"
+		retryIn = pollRateLimitedBackoff
+	}
+
+	if shouldLog {
+		runner.logger.Warn(message,
+			"error", err,
+			"retryIn", retryIn.String(),
+		)
+	}
+}
+
+func (runner *Runner) markPollSuccess() {
+	runner.stateMu.Lock()
+	recovered := runner.pollFailing
+	runner.pollFailing = false
+	runner.stateMu.Unlock()
+
+	if recovered {
+		runner.logger.Info("polling recovered", "hubURL", runner.hubURL)
+	}
+}
+
+func (runner *Runner) dispatchLogAttrs(dispatch wire.PollResponse, response wire.HttpResponse) []any {
+	attrs := []any{
+		"outboundTraceId", dispatch.OutboundTraceID,
+		"method", dispatch.Req.Method,
+		"url", dispatch.Req.URL,
+		"durationMs", response.Meta.DurationMs,
+		"bytesOut", response.Meta.BytesOut,
+		"bytesIn", response.Meta.BytesIn,
+	}
+
+	if parsedURL, err := url.Parse(dispatch.Req.URL); err == nil {
+		attrs = append(attrs, "targetHost", parsedURL.Hostname())
+	}
+
+	if response.Status != 0 {
+		attrs = append(attrs, "status", response.Status)
+	}
+
+	if response.Meta.Error != nil {
+		attrs = append(attrs,
+			"errorKind", response.Meta.Error.Kind,
+			"errorMessage", response.Meta.Error.Message,
+			"outcome", "execution_error",
+		)
+		return attrs
+	}
+
+	attrs = append(attrs, "outcome", "response_posted")
+	return attrs
 }
 
 func (runner *Runner) postResponse(ctx context.Context, response wire.HttpResponse) error {

@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/WeveHQ/bridge/internal/logging"
 	"github.com/WeveHQ/bridge/internal/verifier"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
@@ -299,7 +301,54 @@ func TestBridgeStatusReportsInFlightDispatches(t *testing.T) {
 	}
 }
 
+func TestHubLogsBridgeLifecycleTransitionsOnce(t *testing.T) {
+	var buffer bytes.Buffer
+	logger, err := logging.New(&buffer, logging.Config{
+		Level:  logging.LevelDebug,
+		Format: logging.FormatText,
+	})
+	if err != nil {
+		t.Fatalf("new logger: %v", err)
+	}
+
+	now := time.Unix(1_700_000_000, 0).UTC()
+	server, token := newTestServerWithOptions(func() time.Time { return now }, logger)
+	testServer := httptest.NewServer(server.Handler())
+	defer func() { testServer.Close() }()
+
+	postHeartbeat(t, testServer.URL, token)
+	if count := strings.Count(buffer.String(), "bridge connected"); count != 1 {
+		t.Fatalf("expected one bridge connected log, got %d: %s", count, buffer.String())
+	}
+
+	now = now.Add(heartbeatTTL + time.Second)
+	status := getBridgeStatus(t, testServer.URL, "bridge_123")
+	if status.Alive {
+		t.Fatal("expected bridge to be offline")
+	}
+	if count := strings.Count(buffer.String(), "bridge went offline"); count != 1 {
+		t.Fatalf("expected one bridge offline log, got %d: %s", count, buffer.String())
+	}
+
+	_ = getBridgeStatus(t, testServer.URL, "bridge_123")
+	if count := strings.Count(buffer.String(), "bridge went offline"); count != 1 {
+		t.Fatalf("expected offline log to be deduplicated, got %d: %s", count, buffer.String())
+	}
+
+	postHeartbeat(t, testServer.URL, token)
+	if count := strings.Count(buffer.String(), "bridge reconnected"); count != 1 {
+		t.Fatalf("expected one bridge reconnected log, got %d: %s", count, buffer.String())
+	}
+}
+
 func newTestServer() (*Server, string) {
+	return newTestServerWithOptions(
+		func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
+		nil,
+	)
+}
+
+func newTestServerWithOptions(now func() time.Time, logger *slog.Logger) (*Server, string) {
 	token := "bridge-token"
 	server := NewServer(Config{
 		TokenVerifier: staticVerifier{
@@ -313,7 +362,8 @@ func newTestServer() (*Server, string) {
 		HubSecret:      "internal-secret",
 		PollHold:       100 * time.Millisecond,
 		GlobalInFlight: 8,
-		Now:            func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
+		Now:            now,
+		Logger:         logger,
 	})
 
 	return server, token
