@@ -3,8 +3,8 @@ import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
-TOKEN = os.environ["WEVE_BRIDGE_TOKEN"]
-VERIFIER_SECRET = os.environ["WEVE_BRIDGE_TOKEN_VERIFIER_SECRET"]
+TOKEN = os.environ["WEVE_BRIDGE_EDGE_TOKEN"]
+VERIFIER_SECRET = os.environ["WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET"]
 BRIDGE_ID = os.environ["WEVE_BRIDGE_BRIDGE_ID"]
 TENANT_ID = os.environ["WEVE_BRIDGE_TENANT_ID"]
 

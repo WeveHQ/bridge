@@ -89,7 +89,7 @@ func runCompose(
 	command.Dir = repoRoot(t)
 	command.Env = append(os.Environ(),
 		fmt.Sprintf("WEVE_BRIDGE_HUB_PORT=%d", hubPort),
-		"WEVE_BRIDGE_TOKEN="+token,
+		"WEVE_BRIDGE_EDGE_TOKEN="+token,
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {
@@ -117,7 +117,7 @@ func composeLogs(
 	command.Dir = repoRoot(t)
 	command.Env = append(os.Environ(),
 		fmt.Sprintf("WEVE_BRIDGE_HUB_PORT=%d", hubPort),
-		"WEVE_BRIDGE_TOKEN="+token,
+		"WEVE_BRIDGE_EDGE_TOKEN="+token,
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {

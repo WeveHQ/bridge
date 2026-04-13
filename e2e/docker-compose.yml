@@ -5,8 +5,8 @@ services:
       dockerfile: Dockerfile
     command: ["hub", "--listen=:8080"]
     environment:
-      WEVE_BRIDGE_TOKEN_VERIFIER_URL: http://verifier:8081/verify
-      WEVE_BRIDGE_TOKEN_VERIFIER_SECRET: verifier-secret
+      WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_URL: http://verifier:8081/verify
+      WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET: verifier-secret
       WEVE_BRIDGE_HUB_SECRET: internal-secret
       WEVE_BRIDGE_POLL_HOLD_SECONDS: "1"
       WEVE_BRIDGE_GLOBAL_IN_FLIGHT: "8"
@@ -21,7 +21,7 @@ services:
     command:
       [
         "edge",
-        "--token=${WEVE_BRIDGE_TOKEN}",
+        "--token=${WEVE_BRIDGE_EDGE_TOKEN}",
         "--hub-url=http://hub:8080"
       ]
     depends_on:
@@ -36,8 +36,8 @@ services:
     image: python:3.12-alpine
     working_dir: /app
     environment:
-      WEVE_BRIDGE_TOKEN: ${WEVE_BRIDGE_TOKEN}
-      WEVE_BRIDGE_TOKEN_VERIFIER_SECRET: verifier-secret
+      WEVE_BRIDGE_EDGE_TOKEN: ${WEVE_BRIDGE_EDGE_TOKEN}
+      WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET: verifier-secret
       WEVE_BRIDGE_BRIDGE_ID: bridge_123
       WEVE_BRIDGE_TENANT_ID: tenant_123
     volumes:

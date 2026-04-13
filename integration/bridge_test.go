@@ -43,8 +43,8 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 	verifyURL := startVerifier(t, token, "verifier-secret")
 
 	hubCmd := startProcess(t, binaryPath, []string{"hub", "--listen=" + hubAddr}, []string{
-		"WEVE_BRIDGE_TOKEN_VERIFIER_URL=" + verifyURL,
-		"WEVE_BRIDGE_TOKEN_VERIFIER_SECRET=verifier-secret",
+		"WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_URL=" + verifyURL,
+		"WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET=verifier-secret",
 		"WEVE_BRIDGE_HUB_SECRET=internal-secret",
 		"WEVE_BRIDGE_POLL_HOLD_SECONDS=1",
 		"WEVE_BRIDGE_GLOBAL_IN_FLIGHT=8",

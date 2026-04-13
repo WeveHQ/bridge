@@ -56,9 +56,9 @@ type HubInputs struct {
 }
 
 func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
-	token := firstNonEmpty(inputs.Token, os.Getenv("WEVE_BRIDGE_TOKEN"))
+	token := firstNonEmpty(inputs.Token, os.Getenv("WEVE_BRIDGE_EDGE_TOKEN"))
 	if token == "" {
-		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_TOKEN")
+		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_TOKEN")
 	}
 
 	hubURL := firstNonEmpty(inputs.HubURL, os.Getenv("WEVE_BRIDGE_URL"))
@@ -96,14 +96,14 @@ func ParseHubConfig(inputs HubInputs) (HubConfig, error) {
 		listenAddr = defaultListenAddr
 	}
 
-	verifyTokenURL := firstNonEmpty(inputs.TokenVerifierURL, os.Getenv("WEVE_BRIDGE_TOKEN_VERIFIER_URL"))
+	verifyTokenURL := firstNonEmpty(inputs.TokenVerifierURL, os.Getenv("WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_URL"))
 	if verifyTokenURL == "" {
-		return HubConfig{}, errors.New("missing WEVE_BRIDGE_TOKEN_VERIFIER_URL")
+		return HubConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_URL")
 	}
 
-	verifyTokenSecret := firstNonEmpty(inputs.TokenVerifierSecret, os.Getenv("WEVE_BRIDGE_TOKEN_VERIFIER_SECRET"))
+	verifyTokenSecret := firstNonEmpty(inputs.TokenVerifierSecret, os.Getenv("WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET"))
 	if verifyTokenSecret == "" {
-		return HubConfig{}, errors.New("missing WEVE_BRIDGE_TOKEN_VERIFIER_SECRET")
+		return HubConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_TOKEN_VERIFIER_SECRET")
 	}
 
 	hubSecret := firstNonEmpty(inputs.HubSecret, os.Getenv("WEVE_BRIDGE_HUB_SECRET"))
