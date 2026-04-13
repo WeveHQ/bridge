@@ -514,3 +514,226 @@ func (stub staticVerifier) Verify(_ context.Context, token string) (verifier.Cla
 
 	return claims, nil
 }
+
+func newTwoBridgeServer() (*Server, map[string]string) {
+	tokens := map[string]string{
+		"bridge_a": "token-a",
+		"bridge_b": "token-b",
+	}
+	claims := map[string]verifier.Claims{}
+	for bridgeID, token := range tokens {
+		claims[token] = verifier.Claims{TenantID: "tenant_123", BridgeID: bridgeID}
+	}
+	server := NewServer(Config{
+		TokenVerifier:  staticVerifier{claimsByToken: claims},
+		HubSecret:      "internal-secret",
+		PollHold:       100 * time.Millisecond,
+		GlobalInFlight: 8,
+		Now:            func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
+	})
+	return server, tokens
+}
+
+func postHeartbeatFor(t *testing.T, baseURL string, token string) {
+	t.Helper()
+	postHeartbeat(t, baseURL, token)
+}
+
+func dispatchRequestTo(t *testing.T, ctx context.Context, baseURL string, bridgeID string, dispatch wire.DispatchRequest) (wire.HttpResponse, int) {
+	t.Helper()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+wire.DispatchPathPrefix+bridgeID, bytes.NewReader(wire.MustJSON(dispatch)))
+	if err != nil {
+		t.Fatalf("create dispatch request: %v", err)
+	}
+	request.Header.Set(bridgeHubSecretHeader, "internal-secret")
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("dispatch request failed: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	var parsed wire.HttpResponse
+	if err := json.NewDecoder(response.Body).Decode(&parsed); err != nil {
+		t.Fatalf("decode dispatch response: %v", err)
+	}
+
+	return parsed, response.StatusCode
+}
+
+func postRawResponse(t *testing.T, baseURL string, token string, payload wire.HttpResponse) *http.Response {
+	t.Helper()
+
+	request, err := http.NewRequest(http.MethodPost, baseURL+wire.ResponsePathPrefix+payload.OutboundTraceID, bytes.NewReader(wire.MustJSON(payload)))
+	if err != nil {
+		t.Fatalf("create response request: %v", err)
+	}
+	request.Header.Set(authorizationHeader, "Bearer "+token)
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("post response failed: %v", err)
+	}
+	return response
+}
+
+func TestDispatchIsolatedByBridgeOnDuplicateTraceID(t *testing.T) {
+	t.Parallel()
+
+	server, tokens := newTwoBridgeServer()
+	testServer := httptest.NewServer(server.Handler())
+	defer func() { testServer.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	postHeartbeatFor(t, testServer.URL, tokens["bridge_a"])
+	postHeartbeatFor(t, testServer.URL, tokens["bridge_b"])
+
+	type outcome struct {
+		response wire.HttpResponse
+		status   int
+	}
+	resultA := make(chan outcome, 1)
+	resultB := make(chan outcome, 1)
+
+	dispatchPayload := func(bridgeID string) wire.DispatchRequest {
+		return wire.DispatchRequest{
+			OutboundTraceID: "ot_dup",
+			Req: wire.HttpRequest{
+				Method:         "GET",
+				URL:            "https://target.internal/" + bridgeID,
+				DeadlineUnixMs: uint64(time.Now().Add(time.Minute).UnixMilli()),
+			},
+		}
+	}
+
+	go func() {
+		resp, status := dispatchRequestTo(t, ctx, testServer.URL, "bridge_a", dispatchPayload("bridge_a"))
+		resultA <- outcome{response: resp, status: status}
+	}()
+	go func() {
+		resp, status := dispatchRequestTo(t, ctx, testServer.URL, "bridge_b", dispatchPayload("bridge_b"))
+		resultB <- outcome{response: resp, status: status}
+	}()
+
+	polledA := pollRequest(t, testServer.URL, tokens["bridge_a"])
+	polledB := pollRequest(t, testServer.URL, tokens["bridge_b"])
+	if polledA.OutboundTraceID != "ot_dup" || polledB.OutboundTraceID != "ot_dup" {
+		t.Fatalf("unexpected polled trace ids: %q %q", polledA.OutboundTraceID, polledB.OutboundTraceID)
+	}
+	if polledA.Req.URL == polledB.Req.URL {
+		t.Fatalf("each bridge should receive its own dispatch, got same URL: %s", polledA.Req.URL)
+	}
+
+	bodyA := base64.StdEncoding.EncodeToString([]byte(`{"from":"a"}`))
+	bodyB := base64.StdEncoding.EncodeToString([]byte(`{"from":"b"}`))
+	postResponse(t, testServer.URL, tokens["bridge_a"], wire.HttpResponse{
+		OutboundTraceID: "ot_dup",
+		Status:          200,
+		Body:            bodyA,
+	})
+	postResponse(t, testServer.URL, tokens["bridge_b"], wire.HttpResponse{
+		OutboundTraceID: "ot_dup",
+		Status:          200,
+		Body:            bodyB,
+	})
+
+	var outA, outB outcome
+	select {
+	case outA = <-resultA:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for bridge_a dispatch")
+	}
+	select {
+	case outB = <-resultB:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for bridge_b dispatch")
+	}
+
+	if outA.status != http.StatusOK || outB.status != http.StatusOK {
+		t.Fatalf("unexpected statuses: a=%d b=%d", outA.status, outB.status)
+	}
+	if outA.response.Body != bodyA {
+		t.Fatalf("bridge_a got wrong body: %q", outA.response.Body)
+	}
+	if outB.response.Body != bodyB {
+		t.Fatalf("bridge_b got wrong body: %q", outB.response.Body)
+	}
+}
+
+func TestResponseFromWrongBridgeIsRejected(t *testing.T) {
+	t.Parallel()
+
+	server, tokens := newTwoBridgeServer()
+	testServer := httptest.NewServer(server.Handler())
+	defer func() { testServer.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	postHeartbeatFor(t, testServer.URL, tokens["bridge_a"])
+	postHeartbeatFor(t, testServer.URL, tokens["bridge_b"])
+
+	type outcome struct {
+		response wire.HttpResponse
+		status   int
+	}
+	resultA := make(chan outcome, 1)
+
+	go func() {
+		resp, status := dispatchRequestTo(t, ctx, testServer.URL, "bridge_a", wire.DispatchRequest{
+			OutboundTraceID: "ot_xyz",
+			Req: wire.HttpRequest{
+				Method:         "GET",
+				URL:            "https://target.internal/test",
+				DeadlineUnixMs: uint64(time.Now().Add(time.Minute).UnixMilli()),
+			},
+		})
+		resultA <- outcome{response: resp, status: status}
+	}()
+
+	polled := pollRequest(t, testServer.URL, tokens["bridge_a"])
+	if polled.OutboundTraceID != "ot_xyz" {
+		t.Fatalf("unexpected trace id: %s", polled.OutboundTraceID)
+	}
+
+	maliciousBody := base64.StdEncoding.EncodeToString([]byte(`{"from":"b"}`))
+	bResponse := postRawResponse(t, testServer.URL, tokens["bridge_b"], wire.HttpResponse{
+		OutboundTraceID: "ot_xyz",
+		Status:          200,
+		Body:            maliciousBody,
+	})
+	defer func() { _ = bResponse.Body.Close() }()
+
+	if bResponse.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(bResponse.Body)
+		t.Fatalf("expected 404 for wrong-bridge response, got %d: %s", bResponse.StatusCode, body)
+	}
+
+	select {
+	case <-resultA:
+		t.Fatal("bridge_a dispatch completed before its own response was posted")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	aBody := base64.StdEncoding.EncodeToString([]byte(`{"from":"a"}`))
+	postResponse(t, testServer.URL, tokens["bridge_a"], wire.HttpResponse{
+		OutboundTraceID: "ot_xyz",
+		Status:          200,
+		Body:            aBody,
+	})
+
+	select {
+	case outA := <-resultA:
+		if outA.status != http.StatusOK {
+			t.Fatalf("unexpected dispatch status: %d", outA.status)
+		}
+		if outA.response.Body != aBody {
+			t.Fatalf("bridge_a received wrong body: %q", outA.response.Body)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for bridge_a dispatch")
+	}
+}

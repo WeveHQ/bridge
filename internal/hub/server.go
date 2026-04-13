@@ -47,8 +47,8 @@ type Server struct {
 
 	mu                sync.Mutex
 	bridges           map[string]*bridgeState
-	inFlight          map[string]*dispatchState
-	completed         map[string]time.Time
+	inFlight          map[dispatchKey]*dispatchState
+	completed         map[dispatchKey]time.Time
 	pollsByBridge     map[string]int
 	draining          bool
 	globalRateLimited bool
@@ -63,6 +63,11 @@ type bridgeState struct {
 	aliveKnown           bool
 	alive                bool
 	pollRateLimited      bool
+}
+
+type dispatchKey struct {
+	bridgeID        string
+	outboundTraceID string
 }
 
 type dispatchState struct {
@@ -108,8 +113,8 @@ func NewServer(cfg Config) *Server {
 		perEdgeMaxPollConcurrency: cfg.PerEdgeMaxPollConcurrency,
 		logger:                    logger,
 		bridges:                   map[string]*bridgeState{},
-		inFlight:                  map[string]*dispatchState{},
-		completed:                 map[string]time.Time{},
+		inFlight:                  map[dispatchKey]*dispatchState{},
+		completed:                 map[dispatchKey]time.Time{},
 		pollsByBridge:             map[string]int{},
 	}
 }
@@ -207,7 +212,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 			"outboundTraceId", outboundTraceID,
 			"error", err,
 		)
-		server.completeWithReject(outboundTraceID, wire.BridgeResponseRejected, err.Error())
+		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseRejected, err.Error())
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -221,7 +226,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 			"outboundTraceId", outboundTraceID,
 			"responseOutboundTraceId", response.OutboundTraceID,
 		)
-		server.completeWithReject(outboundTraceID, wire.BridgeResponseRejected, "response outbound trace id mismatch")
+		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseRejected, "response outbound trace id mismatch")
 		http.Error(writer, "response outbound trace id mismatch", http.StatusBadRequest)
 		return
 	}
@@ -238,7 +243,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 			"outboundTraceId", outboundTraceID,
 			"error", err,
 		)
-		server.completeWithReject(outboundTraceID, wire.BridgeResponseRejected, err.Error())
+		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseRejected, err.Error())
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -249,15 +254,16 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 			"bodySize", size,
 			"maxBodyBytes", wire.MaxBodyBytes,
 		)
-		server.completeWithReject(outboundTraceID, wire.BridgeResponseTooLarge, "response body exceeds max size")
+		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseTooLarge, "response body exceeds max size")
 		http.Error(writer, "response body exceeds max size", http.StatusRequestEntityTooLarge)
 		return
 	}
 
+	key := dispatchKey{bridgeID: claims.BridgeID, outboundTraceID: outboundTraceID}
 	server.mu.Lock()
-	if dispatch, ok := server.inFlight[outboundTraceID]; ok {
-		delete(server.inFlight, outboundTraceID)
-		server.completed[outboundTraceID] = server.now()
+	if dispatch, ok := server.inFlight[key]; ok {
+		delete(server.inFlight, key)
+		server.completed[key] = server.now()
 		recovered, remaining := server.clearGlobalRateLimitLocked()
 		server.mu.Unlock()
 		dispatch.result <- dispatchResult{response: &response}
@@ -271,7 +277,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	_, alreadyCompleted := server.completed[outboundTraceID]
+	_, alreadyCompleted := server.completed[key]
 	server.mu.Unlock()
 
 	if alreadyCompleted {
@@ -583,7 +589,7 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 		return newReject(wire.BridgeOfflineCode, "bridge is offline")
 	}
 
-	server.inFlight[dispatch.outboundTraceID] = dispatch
+	server.inFlight[dispatchKey{bridgeID: dispatch.bridgeID, outboundTraceID: dispatch.outboundTraceID}] = dispatch
 	server.cleanupCompleted()
 	if len(state.waiters) > 0 {
 		waiter := state.waiters[0]
@@ -609,7 +615,7 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 	select {
 	case <-dispatch.pickedUp:
 	case <-time.After(parkGrace):
-		if server.cancelPendingDispatch(dispatch.outboundTraceID) {
+		if server.cancelPendingDispatch(dispatch.bridgeID, dispatch.outboundTraceID) {
 			server.logger.Warn("bridge did not pick up dispatch",
 				"bridgeId", bridgeID,
 				"outboundTraceId", dispatch.outboundTraceID,
@@ -618,7 +624,7 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 			return newReject(wire.BridgeOfflineCode, "bridge did not pick up dispatch")
 		}
 	case <-ctx.Done():
-		server.cancelPendingDispatch(dispatch.outboundTraceID)
+		server.cancelPendingDispatch(dispatch.bridgeID, dispatch.outboundTraceID)
 		return newReject(wire.BridgeResponseRejected, ctx.Err().Error())
 	}
 
@@ -626,14 +632,15 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 	case result := <-dispatch.result:
 		return result
 	case <-ctx.Done():
-		server.removeInFlight(dispatch.outboundTraceID)
+		server.removeInFlight(dispatch.bridgeID, dispatch.outboundTraceID)
 		return newReject(wire.BridgeResponseRejected, ctx.Err().Error())
 	}
 }
 
-func (server *Server) cancelPendingDispatch(outboundTraceID string) bool {
+func (server *Server) cancelPendingDispatch(bridgeID string, outboundTraceID string) bool {
+	key := dispatchKey{bridgeID: bridgeID, outboundTraceID: outboundTraceID}
 	server.mu.Lock()
-	dispatch, ok := server.inFlight[outboundTraceID]
+	dispatch, ok := server.inFlight[key]
 	if !ok {
 		server.mu.Unlock()
 		return false
@@ -646,7 +653,7 @@ func (server *Server) cancelPendingDispatch(outboundTraceID string) bool {
 		}
 
 		state.pending = append(state.pending[:index], state.pending[index+1:]...)
-		delete(server.inFlight, outboundTraceID)
+		delete(server.inFlight, key)
 		recovered, remaining := server.clearGlobalRateLimitLocked()
 		server.mu.Unlock()
 		if recovered {
@@ -662,16 +669,17 @@ func (server *Server) cancelPendingDispatch(outboundTraceID string) bool {
 	return false
 }
 
-func (server *Server) completeWithReject(outboundTraceID string, code string, message string) bool {
+func (server *Server) completeWithReject(bridgeID string, outboundTraceID string, code string, message string) bool {
+	key := dispatchKey{bridgeID: bridgeID, outboundTraceID: outboundTraceID}
 	server.mu.Lock()
-	dispatch, ok := server.inFlight[outboundTraceID]
+	dispatch, ok := server.inFlight[key]
 	if !ok {
 		server.mu.Unlock()
 		return false
 	}
 
-	delete(server.inFlight, outboundTraceID)
-	server.completed[outboundTraceID] = server.now()
+	delete(server.inFlight, key)
+	server.completed[key] = server.now()
 	recovered, remaining := server.clearGlobalRateLimitLocked()
 	server.mu.Unlock()
 
@@ -693,9 +701,9 @@ func (server *Server) completeWithReject(outboundTraceID string, code string, me
 	return true
 }
 
-func (server *Server) removeInFlight(outboundTraceID string) {
+func (server *Server) removeInFlight(bridgeID string, outboundTraceID string) {
 	server.mu.Lock()
-	delete(server.inFlight, outboundTraceID)
+	delete(server.inFlight, dispatchKey{bridgeID: bridgeID, outboundTraceID: outboundTraceID})
 	recovered, remaining := server.clearGlobalRateLimitLocked()
 	server.mu.Unlock()
 
