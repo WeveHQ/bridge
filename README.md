@@ -98,17 +98,19 @@ Cross-compile for Linux from any host by setting `GOOS=linux GOARCH=amd64` (or `
 
 All configuration is through environment variables.
 
-| Variable                       | Required | Default | Purpose                                           |
-| ------------------------------ | -------- | ------- | ------------------------------------------------- |
-| `WEVE_BRIDGE_EDGE_TOKEN`            | yes      | —       | Enrollment token from the Weve dashboard          |
-| `WEVE_BRIDGE_EDGE_HUB_URL`              | yes      | —       | Bridge endpoint for your tenant (from dashboard)  |
-| `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`    | no       | —       | Comma-separated internal host allow-list          |
-| `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY` | no       | `4`     | Concurrent in-flight requests this edge handles   |
-| `WEVE_BRIDGE_LOG_LEVEL`        | no       | `info`  | `debug` / `info` / `warn` / `error`               |
-| `WEVE_BRIDGE_LOG_FORMAT`       | no       | `json`  | `json` / `text`                                   |
-| `HTTPS_PROXY`                  | no       | —       | Corporate egress proxy                            |
-| `NO_PROXY`                     | no       | —       | Proxy bypass list                                 |
-| `SSL_CERT_FILE`                | no       | —       | Custom CA bundle for TLS-intercepting middleboxes |
+| Variable                             | Required | Default | Purpose                                           |
+| ------------------------------------ | -------- | ------- | ------------------------------------------------- |
+| `WEVE_BRIDGE_EDGE_TOKEN`             | yes      | —       | Enrollment token from the Weve dashboard          |
+| `WEVE_BRIDGE_EDGE_HUB_URL`           | yes      | —       | Bridge endpoint for your tenant (from dashboard)  |
+| `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`     | no       | —       | Comma-separated internal host allow-list          |
+| `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY`  | no       | `4`     | Concurrent in-flight requests this edge handles   |
+| `WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS` | no       | `15`    | Heartbeat interval to the hub                     |
+| `WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS`   | no       | `30000` | Long-poll timeout in milliseconds                 |
+| `WEVE_BRIDGE_LOG_LEVEL`              | no       | `info`  | `debug` / `info` / `warn` / `error`               |
+| `WEVE_BRIDGE_LOG_FORMAT`             | no       | `json`  | `json` / `text`                                   |
+| `HTTPS_PROXY`                        | no       | —       | Corporate egress proxy                            |
+| `NO_PROXY`                           | no       | —       | Proxy bypass list                                 |
+| `SSL_CERT_FILE`                      | no       | —       | Custom CA bundle for TLS-intercepting middleboxes |
 
 ### Allow-list
 
@@ -128,14 +130,14 @@ Point `SSL_CERT_FILE` at your CA bundle. The edge does not pin certificates — 
 
 ## Troubleshooting
 
-| Symptom                                 | Likely cause                                 |
-| --------------------------------------- | -------------------------------------------- |
-| `edge failed to connect: tls handshake` | TLS-intercepting proxy — set `SSL_CERT_FILE` |
-| `407 proxy authentication required`     | `HTTPS_PROXY` missing credentials            |
-| `host not allowed: <host>`              | Target not in `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`    |
-| `token invalid`                         | Token for the wrong environment, or revoked  |
-| Dashboard shows `disconnected`          | Outbound 443 blocked, or edge killed         |
-| `minimum version required`              | Upgrade the image                            |
+| Symptom                                 | Likely cause                                   |
+| --------------------------------------- | ---------------------------------------------- |
+| `edge failed to connect: tls handshake` | TLS-intercepting proxy — set `SSL_CERT_FILE`   |
+| `407 proxy authentication required`     | `HTTPS_PROXY` missing credentials              |
+| `host not allowed: <host>`              | Target not in `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS` |
+| `token invalid`                         | Token for the wrong environment, or revoked    |
+| Dashboard shows `disconnected`          | Outbound 443 blocked, or edge killed           |
+| `minimum version required`              | Upgrade the image                              |
 
 Run with `WEVE_BRIDGE_LOG_LEVEL=debug` for verbose diagnostics.
 
