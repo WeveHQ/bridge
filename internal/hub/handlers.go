@@ -85,7 +85,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 			"outboundTraceId", outboundTraceID,
 			"error", err,
 		)
-		server.completeWithReject(outboundTraceID, wire.BridgeResponseRejected, err.Error())
+		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseRejected, err.Error())
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -99,7 +99,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 			"outboundTraceId", outboundTraceID,
 			"responseOutboundTraceId", response.OutboundTraceID,
 		)
-		server.completeWithReject(outboundTraceID, wire.BridgeResponseRejected, "response outbound trace id mismatch")
+		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseRejected, "response outbound trace id mismatch")
 		http.Error(writer, "response outbound trace id mismatch", http.StatusBadRequest)
 		return
 	}
@@ -116,7 +116,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 			"outboundTraceId", outboundTraceID,
 			"error", err,
 		)
-		server.completeWithReject(outboundTraceID, wire.BridgeResponseRejected, err.Error())
+		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseRejected, err.Error())
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -127,15 +127,16 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 			"bodySize", size,
 			"maxBodyBytes", wire.MaxBodyBytes,
 		)
-		server.completeWithReject(outboundTraceID, wire.BridgeResponseTooLarge, "response body exceeds max size")
+		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseTooLarge, "response body exceeds max size")
 		http.Error(writer, "response body exceeds max size", http.StatusRequestEntityTooLarge)
 		return
 	}
 
 	server.mu.Lock()
-	if dispatch, ok := server.inFlight[outboundTraceID]; ok {
-		delete(server.inFlight, outboundTraceID)
-		server.completed[outboundTraceID] = server.now()
+	key := newDispatchKey(claims.BridgeID, outboundTraceID)
+	if dispatch, ok := server.registry.inFlight[key]; ok {
+		delete(server.registry.inFlight, key)
+		server.registry.completed[key] = server.now()
 		recovered, remaining := server.clearGlobalRateLimitLocked()
 		server.mu.Unlock()
 		dispatch.result <- dispatchResult{response: &response}
@@ -149,7 +150,7 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	_, alreadyCompleted := server.completed[outboundTraceID]
+	_, alreadyCompleted := server.registry.completed[key]
 	server.mu.Unlock()
 
 	if alreadyCompleted {

@@ -7,7 +7,7 @@ func (server *Server) tryAcquirePollSlot(bridgeID string) bool {
 
 	server.mu.Lock()
 	state := server.getBridgeState(bridgeID)
-	current := server.pollsByBridge[bridgeID]
+	current := server.registry.pollsByBridge[bridgeID]
 	if current >= server.perEdgeMaxPollConcurrency {
 		shouldLog := !state.pollRateLimited
 		state.pollRateLimited = true
@@ -22,7 +22,7 @@ func (server *Server) tryAcquirePollSlot(bridgeID string) bool {
 		return false
 	}
 
-	server.pollsByBridge[bridgeID] = current + 1
+	server.registry.pollsByBridge[bridgeID] = current + 1
 	server.mu.Unlock()
 	return true
 }
@@ -34,12 +34,12 @@ func (server *Server) releasePollSlot(bridgeID string) {
 
 	server.mu.Lock()
 	state := server.getBridgeState(bridgeID)
-	count := server.pollsByBridge[bridgeID]
+	count := server.registry.pollsByBridge[bridgeID]
 	recovered := state.pollRateLimited && count >= server.perEdgeMaxPollConcurrency
 	if count <= 1 {
-		delete(server.pollsByBridge, bridgeID)
+		delete(server.registry.pollsByBridge, bridgeID)
 	} else {
-		server.pollsByBridge[bridgeID] = count - 1
+		server.registry.pollsByBridge[bridgeID] = count - 1
 	}
 	if recovered {
 		state.pollRateLimited = false
@@ -56,11 +56,11 @@ func (server *Server) releasePollSlot(bridgeID string) {
 
 func (server *Server) clearGlobalRateLimitLocked() (bool, int) {
 	if !server.globalRateLimited {
-		return false, len(server.inFlight)
+		return false, len(server.registry.inFlight)
 	}
-	if len(server.inFlight) >= server.globalInFlight {
-		return false, len(server.inFlight)
+	if len(server.registry.inFlight) >= server.globalInFlight {
+		return false, len(server.registry.inFlight)
 	}
 	server.globalRateLimited = false
-	return true, len(server.inFlight)
+	return true, len(server.registry.inFlight)
 }

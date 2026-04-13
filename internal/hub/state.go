@@ -94,33 +94,15 @@ func (server *Server) getBridgeStatus(bridgeID string) wire.BridgeStatusResponse
 }
 
 func (server *Server) countInFlightForBridgeLocked(bridgeID string) int {
-	count := 0
-	for _, dispatch := range server.inFlight {
-		if dispatch.bridgeID == bridgeID {
-			count++
-		}
-	}
-	return count
+	return server.registry.countInFlightForBridge(bridgeID)
 }
 
 func (server *Server) getBridgeState(bridgeID string) *bridgeState {
-	state, ok := server.bridges[bridgeID]
-	if ok {
-		return state
-	}
-
-	state = &bridgeState{}
-	server.bridges[bridgeID] = state
-	return state
+	return server.registry.bridgeState(bridgeID)
 }
 
 func (server *Server) cleanupCompleted() {
-	now := server.now()
-	for key, completedAt := range server.completed {
-		if now.Sub(completedAt) > completedTTL {
-			delete(server.completed, key)
-		}
-	}
+	server.registry.cleanupCompleted(server.now())
 }
 
 func (server *Server) observeBridgeHealthLocked(bridgeID string, state *bridgeState) (*bridgeTransition, bool) {

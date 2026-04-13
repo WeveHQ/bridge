@@ -39,10 +39,7 @@ type Server struct {
 	logger                    *slog.Logger
 
 	mu                sync.Mutex
-	bridges           map[string]*bridgeState
-	inFlight          map[string]*dispatchState
-	completed         map[string]time.Time
-	pollsByBridge     map[string]int
+	registry          *registry
 	draining          bool
 	globalRateLimited bool
 }
@@ -70,10 +67,7 @@ func NewServer(cfg Config) *Server {
 		globalInFlight:            cfg.GlobalInFlight,
 		perEdgeMaxPollConcurrency: cfg.PerEdgeMaxPollConcurrency,
 		logger:                    logger,
-		bridges:                   map[string]*bridgeState{},
-		inFlight:                  map[string]*dispatchState{},
-		completed:                 map[string]time.Time{},
-		pollsByBridge:             map[string]int{},
+		registry:                  newRegistry(),
 	}
 }
 

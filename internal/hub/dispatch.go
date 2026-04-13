@@ -85,7 +85,7 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 		return newReject(wire.BridgeOfflineCode, "hub is draining")
 	}
 
-	if len(server.inFlight) >= server.globalInFlight {
+	if len(server.registry.inFlight) >= server.globalInFlight {
 		shouldLog := !server.globalRateLimited
 		server.globalRateLimited = true
 		server.mu.Unlock()
@@ -103,7 +103,7 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 		return newReject(wire.BridgeOfflineCode, "bridge is offline")
 	}
 
-	server.inFlight[dispatch.outboundTraceID] = dispatch
+	server.registry.inFlight[newDispatchKey(bridgeID, dispatch.outboundTraceID)] = dispatch
 	server.cleanupCompleted()
 	if len(state.waiters) > 0 {
 		waiter := state.waiters[0]
@@ -129,7 +129,7 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 	select {
 	case <-dispatch.pickedUp:
 	case <-time.After(parkGrace):
-		if server.cancelPendingDispatch(dispatch.outboundTraceID) {
+		if server.cancelPendingDispatch(dispatch.bridgeID, dispatch.outboundTraceID) {
 			server.logger.Warn("bridge did not pick up dispatch",
 				"bridgeId", bridgeID,
 				"outboundTraceId", dispatch.outboundTraceID,
@@ -138,7 +138,7 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 			return newReject(wire.BridgeOfflineCode, "bridge did not pick up dispatch")
 		}
 	case <-ctx.Done():
-		server.cancelPendingDispatch(dispatch.outboundTraceID)
+		server.cancelPendingDispatch(dispatch.bridgeID, dispatch.outboundTraceID)
 		return newReject(wire.BridgeResponseRejected, ctx.Err().Error())
 	}
 
@@ -146,14 +146,15 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 	case result := <-dispatch.result:
 		return result
 	case <-ctx.Done():
-		server.removeInFlight(dispatch.outboundTraceID)
+		server.removeInFlight(dispatch.bridgeID, dispatch.outboundTraceID)
 		return newReject(wire.BridgeResponseRejected, ctx.Err().Error())
 	}
 }
 
-func (server *Server) cancelPendingDispatch(outboundTraceID string) bool {
+func (server *Server) cancelPendingDispatch(bridgeID string, outboundTraceID string) bool {
 	server.mu.Lock()
-	dispatch, ok := server.inFlight[outboundTraceID]
+	key := newDispatchKey(bridgeID, outboundTraceID)
+	dispatch, ok := server.registry.inFlight[key]
 	if !ok {
 		server.mu.Unlock()
 		return false
@@ -166,7 +167,7 @@ func (server *Server) cancelPendingDispatch(outboundTraceID string) bool {
 		}
 
 		state.pending = append(state.pending[:index], state.pending[index+1:]...)
-		delete(server.inFlight, outboundTraceID)
+		delete(server.registry.inFlight, key)
 		recovered, remaining := server.clearGlobalRateLimitLocked()
 		server.mu.Unlock()
 		if recovered {
@@ -182,16 +183,17 @@ func (server *Server) cancelPendingDispatch(outboundTraceID string) bool {
 	return false
 }
 
-func (server *Server) completeWithReject(outboundTraceID string, code string, message string) bool {
+func (server *Server) completeWithReject(bridgeID string, outboundTraceID string, code string, message string) bool {
 	server.mu.Lock()
-	dispatch, ok := server.inFlight[outboundTraceID]
+	key := newDispatchKey(bridgeID, outboundTraceID)
+	dispatch, ok := server.registry.inFlight[key]
 	if !ok {
 		server.mu.Unlock()
 		return false
 	}
 
-	delete(server.inFlight, outboundTraceID)
-	server.completed[outboundTraceID] = server.now()
+	delete(server.registry.inFlight, key)
+	server.registry.completed[key] = server.now()
 	recovered, remaining := server.clearGlobalRateLimitLocked()
 	server.mu.Unlock()
 
@@ -213,9 +215,9 @@ func (server *Server) completeWithReject(outboundTraceID string, code string, me
 	return true
 }
 
-func (server *Server) removeInFlight(outboundTraceID string) {
+func (server *Server) removeInFlight(bridgeID string, outboundTraceID string) {
 	server.mu.Lock()
-	delete(server.inFlight, outboundTraceID)
+	delete(server.registry.inFlight, newDispatchKey(bridgeID, outboundTraceID))
 	recovered, remaining := server.clearGlobalRateLimitLocked()
 	server.mu.Unlock()
 
