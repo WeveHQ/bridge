@@ -130,14 +130,15 @@ Point `SSL_CERT_FILE` at your CA bundle. The edge does not pin certificates — 
 
 ## Troubleshooting
 
-| Symptom                                 | Likely cause                                   |
-| --------------------------------------- | ---------------------------------------------- |
-| `edge failed to connect: tls handshake` | TLS-intercepting proxy — set `SSL_CERT_FILE`   |
-| `407 proxy authentication required`     | `HTTPS_PROXY` missing credentials              |
-| `host not allowed: <host>`              | Target not in `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS` |
-| `token invalid`                         | Token for the wrong environment, or revoked    |
-| Dashboard shows `disconnected`          | Outbound 443 blocked, or edge killed           |
-| `minimum version required`              | Upgrade the image                              |
+| Symptom                                                                                                                      | What it usually means / what to check                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heartbeat failed` or `poll failed` with `invalid token`                                                                     | The enrollment token was rejected by the hub/token verifier. Check that the token is current/correct.                                                                                              |
+| `heartbeat failed` or `poll failed` with `token verifier unavailable`                                                        | Hub-side token verification is failing or unreachable. This is usually a issue in the Weve side. Reach out to `engineering@weve.security`.                                                         |
+| `heartbeat failed` or `poll failed` with a TLS / certificate / x509 error                                                    | The edge could not establish TLS to the hub, proxy, or target. If you use TLS interception, set `SSL_CERT_FILE` to your CA bundle.                                                                 |
+| `407 Proxy Authentication Required`                                                                                          | The configured `HTTPS_PROXY` requires credentials the container/host does not have.                                                                                                                |
+| `poll rate limited by hub`                                                                                                   | The hub is enforcing its per-edge poll concurrency limit. The edge backs off automatically; Benign, but you should lower `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY`.                                      |
+| `dispatch completed with execution error` and `host not allowed: <host>`                                                     | The target hostname is not in `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`. Matching is exact by hostname (no wildcards). Could be on purpose; if not, either add the host or remove the env var to allow all. |
+| `dispatch completed with execution error` and `errorKind=dns`, `timeout`, `connection_refused`, `tls`, or `connection_reset` | The edge received the dispatch but failed to reach the internal target. Check internal DNS, connectivity, deadlines, and the target's TLS chain.                                                   |
 
 Run with `WEVE_BRIDGE_LOG_LEVEL=debug` for verbose diagnostics.
 
