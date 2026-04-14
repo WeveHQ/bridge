@@ -48,10 +48,6 @@ func (server *Server) refreshHeartbeat(bridgeID string, heartbeat wire.Heartbeat
 	}
 }
 
-func (server *Server) wasOfflineLocked(bridgeID string) bool {
-	return !server.bridgeAliveLocked(server.getBridgeState(bridgeID))
-}
-
 func (server *Server) bridgeAliveLocked(state *bridgeState) bool {
 	if len(state.waiters) > 0 {
 		return true
