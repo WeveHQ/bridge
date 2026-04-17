@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/WeveHQ/bridge/internal/healthz"
 	"github.com/WeveHQ/bridge/internal/logging"
 	"github.com/WeveHQ/bridge/internal/verifier"
 	"github.com/WeveHQ/bridge/internal/wire"
@@ -73,6 +74,7 @@ func NewServer(cfg Config) *Server {
 
 func (server *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc(healthz.Path, healthz.Handler)
 	mux.HandleFunc(wire.PollPath, server.handlePoll)
 	mux.HandleFunc(wire.HeartbeatPath, server.handleHeartbeat)
 	mux.HandleFunc(wire.ResponsePathPrefix, server.handleResponse)

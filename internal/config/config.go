@@ -14,6 +14,7 @@ const (
 	defaultPollConcurrency  = 4
 	defaultHeartbeatSeconds = 15
 	defaultPollTimeoutMs    = 30000
+	defaultHealthListenAddr = "0.0.0.0:8080"
 	defaultListenAddr       = ":8080"
 	defaultVerifyTimeoutMs  = 2000
 	defaultVerifyCacheSec   = 30
@@ -34,6 +35,7 @@ type LogInputs struct {
 type EdgeConfig struct {
 	Token            string
 	HubURL           string
+	HealthListenAddr string
 	PollConcurrency  int
 	HeartbeatSeconds int
 	PollTimeoutMS    int
@@ -44,6 +46,7 @@ type EdgeConfig struct {
 type EdgeInputs struct {
 	Token            string
 	HubURL           string
+	HealthListenAddr string
 	PollConcurrency  string
 	HeartbeatSeconds string
 	PollTimeoutMS    string
@@ -88,6 +91,11 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 		return EdgeConfig{}, errors.New("missing WEVE_BRIDGE_EDGE_HUB_URL")
 	}
 
+	healthListenAddr := firstNonEmpty(inputs.HealthListenAddr, os.Getenv("WEVE_BRIDGE_EDGE_HEALTH_LISTEN_ADDR"))
+	if healthListenAddr == "" {
+		healthListenAddr = defaultHealthListenAddr
+	}
+
 	pollConcurrency, err := parseIntInRange(firstNonEmpty(inputs.PollConcurrency, os.Getenv("WEVE_BRIDGE_EDGE_POLL_CONCURRENCY")), defaultPollConcurrency, 1, "poll concurrency")
 	if err != nil {
 		return EdgeConfig{}, err
@@ -112,6 +120,7 @@ func ParseEdgeConfig(inputs EdgeInputs) (EdgeConfig, error) {
 	return EdgeConfig{
 		Token:            token,
 		HubURL:           strings.TrimRight(hubURL, "/"),
+		HealthListenAddr: healthListenAddr,
 		PollConcurrency:  pollConcurrency,
 		HeartbeatSeconds: heartbeatSeconds,
 		PollTimeoutMS:    pollTimeoutMS,

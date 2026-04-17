@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WeveHQ/bridge/internal/healthz"
 	"github.com/WeveHQ/bridge/internal/hub"
 	"github.com/WeveHQ/bridge/internal/logging"
 	"github.com/WeveHQ/bridge/internal/testsupport"
@@ -276,6 +278,83 @@ func TestRunnerLogsHeartbeatTransitions(t *testing.T) {
 	}
 }
 
+func TestRunnerServesHealthzAndStopsOnCancel(t *testing.T) {
+	t.Parallel()
+
+	hubServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case wire.HeartbeatPath:
+			writer.WriteHeader(http.StatusOK)
+		case wire.PollPath:
+			writer.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected path: %s", request.URL.Path)
+		}
+	}))
+	defer func() { hubServer.Close() }()
+
+	healthListenAddr := allocateListenAddr(t)
+	runner := NewRunner(Config{
+		Token:             "bridge-token",
+		HubURL:            hubServer.URL,
+		HealthListenAddr:  healthListenAddr,
+		PollConcurrency:   1,
+		HeartbeatInterval: 50 * time.Millisecond,
+		PollTimeout:       250 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErrCh <- runner.Run(ctx)
+	}()
+
+	healthURL := "http://" + healthListenAddr + healthz.Path
+	waitForHealthz(t, healthURL, 2*time.Second)
+
+	response, err := http.Get(healthURL)
+	if err != nil {
+		t.Fatalf("healthz request: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected healthz status: %d", response.StatusCode)
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read healthz body: %v", err)
+	}
+	if string(body) != "OK" {
+		t.Fatalf("unexpected healthz body: %s", string(body))
+	}
+
+	cancel()
+
+	select {
+	case err := <-runErrCh:
+		if err != nil {
+			t.Fatalf("runner returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for runner shutdown")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		_, err := http.Get(healthURL)
+		if err != nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatal("health endpoint still reachable after shutdown")
+}
+
 func TestHandleDispatchLogsSummary(t *testing.T) {
 	var buffer bytes.Buffer
 	logger, err := logging.New(&buffer, logging.Config{
@@ -331,4 +410,35 @@ func TestHandleDispatchLogsSummary(t *testing.T) {
 	if !strings.Contains(logs, "status=202") {
 		t.Fatalf("missing response status in logs: %s", logs)
 	}
+}
+
+func allocateListenAddr(t *testing.T) string {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("allocate listen addr: %v", err)
+	}
+	defer func() { _ = listener.Close() }()
+
+	return listener.Addr().String()
+}
+
+func waitForHealthz(t *testing.T, healthURL string, timeout time.Duration) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		response, err := http.Get(healthURL)
+		if err == nil {
+			_ = response.Body.Close()
+			if response.StatusCode == http.StatusOK {
+				return
+			}
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatalf("timed out waiting for healthz at %s", healthURL)
 }

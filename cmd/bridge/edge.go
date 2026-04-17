@@ -17,13 +17,15 @@ func runEdge(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("edge", flag.ContinueOnError)
 	token := fs.String("token", "", "bridge token")
 	hubURL := fs.String("hub-url", "", "hub base url")
+	healthListenAddr := fs.String("health-listen", "", "health listener address")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	cfg, err := config.ParseEdgeConfig(config.EdgeInputs{
-		Token:  *token,
-		HubURL: *hubURL,
+		Token:            *token,
+		HubURL:           *hubURL,
+		HealthListenAddr: *healthListenAddr,
 	})
 	if err != nil {
 		return err
@@ -44,6 +46,7 @@ func runEdge(ctx context.Context, args []string) error {
 	runner := edge.NewRunner(edge.Config{
 		Token:             cfg.Token,
 		HubURL:            cfg.HubURL,
+		HealthListenAddr:  cfg.HealthListenAddr,
 		PollConcurrency:   cfg.PollConcurrency,
 		HeartbeatInterval: time.Duration(cfg.HeartbeatSeconds) * time.Second,
 		PollTimeout:       time.Duration(cfg.PollTimeoutMS) * time.Millisecond,

@@ -98,19 +98,61 @@ Cross-compile for Linux from any host by setting `GOOS=linux GOARCH=amd64` (or `
 
 All configuration is through environment variables.
 
-| Variable                             | Required | Default | Purpose                                           |
-| ------------------------------------ | -------- | ------- | ------------------------------------------------- |
-| `WEVE_BRIDGE_EDGE_TOKEN`             | yes      | —       | Enrollment token from the Weve dashboard          |
-| `WEVE_BRIDGE_EDGE_HUB_URL`           | yes      | —       | Bridge endpoint for your tenant (from dashboard)  |
-| `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`     | no       | —       | Comma-separated internal host allow-list          |
-| `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY`  | no       | `4`     | Concurrent in-flight requests this edge handles   |
-| `WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS` | no       | `15`    | Heartbeat interval to the hub                     |
-| `WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS`   | no       | `30000` | Long-poll timeout in milliseconds                 |
-| `WEVE_BRIDGE_LOG_LEVEL`              | no       | `info`  | `debug` / `info` / `warn` / `error`               |
-| `WEVE_BRIDGE_LOG_FORMAT`             | no       | `json`  | `json` / `text`                                   |
-| `HTTPS_PROXY`                        | no       | —       | Corporate egress proxy                            |
-| `NO_PROXY`                           | no       | —       | Proxy bypass list                                 |
-| `SSL_CERT_FILE`                      | no       | —       | Custom CA bundle for TLS-intercepting middleboxes |
+| Variable                              | Required | Default        | Purpose                                           |
+| ------------------------------------- | -------- | -------------- | ------------------------------------------------- |
+| `WEVE_BRIDGE_EDGE_TOKEN`              | yes      | —              | Enrollment token from the Weve dashboard          |
+| `WEVE_BRIDGE_EDGE_HUB_URL`            | yes      | —              | Bridge endpoint for your tenant (from dashboard)  |
+| `WEVE_BRIDGE_EDGE_HEALTH_LISTEN_ADDR` | no       | `0.0.0.0:8080` | Address the edge health endpoint listens on       |
+| `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`      | no       | —              | Comma-separated internal host allow-list          |
+| `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY`   | no       | `4`            | Concurrent in-flight requests this edge handles   |
+| `WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS`  | no       | `15`           | Heartbeat interval to the hub                     |
+| `WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS`    | no       | `30000`        | Long-poll timeout in milliseconds                 |
+| `WEVE_BRIDGE_LOG_LEVEL`               | no       | `info`         | `debug` / `info` / `warn` / `error`               |
+| `WEVE_BRIDGE_LOG_FORMAT`              | no       | `json`         | `json` / `text`                                   |
+| `HTTPS_PROXY`                         | no       | —              | Corporate egress proxy                            |
+| `NO_PROXY`                            | no       | —              | Proxy bypass list                                 |
+| `SSL_CERT_FILE`                       | no       | —              | Custom CA bundle for TLS-intercepting middleboxes |
+
+### Health checks
+
+Weve Bridge exposes `GET /healthz` returning HTTP `200` with body `OK` (text).
+
+- Port can be tweaked with `WEVE_BRIDGE_EDGE_HEALTH_LISTEN_ADDR` (default `0.0.0.0:8080`).
+- The container image includes `wget`, so you can use either HTTP probes or in-container `exec` probes.
+
+e.g. Docker Compose:
+
+```yaml
+services:
+  edge:
+    image: ghcr.io/wevehq/weve-bridge:latest
+    command: ['edge']
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/healthz']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+```
+
+e.g. Kubernetes HTTP probe:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+```
+
+e.g. Kubernetes exec probe:
+
+```yaml
+livenessProbe:
+  exec:
+    command:
+      - wget
+      - -qO-
+      - http://127.0.0.1:8080/healthz
+```
 
 ### Allow-list
 

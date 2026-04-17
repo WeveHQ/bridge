@@ -13,7 +13,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o /out/
 
 FROM alpine:3.22
 
-RUN adduser -D -u 10001 bridge
+RUN apk add --no-cache wget && adduser -D -u 10001 bridge
 USER bridge
 
 COPY --from=build /out/weve-bridge /usr/local/bin/weve-bridge

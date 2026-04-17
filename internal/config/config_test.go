@@ -11,6 +11,7 @@ func TestParseEdgeConfig(t *testing.T) {
 	cfg, err := ParseEdgeConfig(EdgeInputs{
 		Token:            "token",
 		HubURL:           "https://hub.example",
+		HealthListenAddr: "127.0.0.1:18080",
 		PollConcurrency:  "6",
 		HeartbeatSeconds: "10",
 		PollTimeoutMS:    "15000",
@@ -19,6 +20,9 @@ func TestParseEdgeConfig(t *testing.T) {
 		t.Fatalf("parse edge config: %v", err)
 	}
 
+	if cfg.HealthListenAddr != "127.0.0.1:18080" {
+		t.Fatalf("unexpected health listen addr: %s", cfg.HealthListenAddr)
+	}
 	if cfg.PollConcurrency != 6 {
 		t.Fatalf("unexpected poll concurrency: %d", cfg.PollConcurrency)
 	}
@@ -30,6 +34,55 @@ func TestParseEdgeConfig(t *testing.T) {
 	}
 	if cfg.Log.Format != "json" {
 		t.Fatalf("unexpected log format: %s", cfg.Log.Format)
+	}
+}
+
+func TestParseEdgeConfigDefaultsHealthListenAddr(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := ParseEdgeConfig(EdgeInputs{
+		Token:  "token",
+		HubURL: "https://hub.example",
+	})
+	if err != nil {
+		t.Fatalf("parse edge config: %v", err)
+	}
+
+	if cfg.HealthListenAddr != "0.0.0.0:8080" {
+		t.Fatalf("unexpected health listen addr: %s", cfg.HealthListenAddr)
+	}
+}
+
+func TestParseEdgeConfigReadsHealthListenAddrFromEnv(t *testing.T) {
+	t.Setenv("WEVE_BRIDGE_EDGE_HEALTH_LISTEN_ADDR", "127.0.0.1:19090")
+
+	cfg, err := ParseEdgeConfig(EdgeInputs{
+		Token:  "token",
+		HubURL: "https://hub.example",
+	})
+	if err != nil {
+		t.Fatalf("parse edge config: %v", err)
+	}
+
+	if cfg.HealthListenAddr != "127.0.0.1:19090" {
+		t.Fatalf("unexpected health listen addr: %s", cfg.HealthListenAddr)
+	}
+}
+
+func TestParseEdgeConfigInputOverridesHealthListenAddrEnv(t *testing.T) {
+	t.Setenv("WEVE_BRIDGE_EDGE_HEALTH_LISTEN_ADDR", "127.0.0.1:19090")
+
+	cfg, err := ParseEdgeConfig(EdgeInputs{
+		Token:            "token",
+		HubURL:           "https://hub.example",
+		HealthListenAddr: "127.0.0.1:18080",
+	})
+	if err != nil {
+		t.Fatalf("parse edge config: %v", err)
+	}
+
+	if cfg.HealthListenAddr != "127.0.0.1:18080" {
+		t.Fatalf("unexpected health listen addr: %s", cfg.HealthListenAddr)
 	}
 }
 

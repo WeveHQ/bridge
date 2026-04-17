@@ -13,11 +13,38 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WeveHQ/bridge/internal/healthz"
 	"github.com/WeveHQ/bridge/internal/logging"
 	"github.com/WeveHQ/bridge/internal/testsupport"
 	"github.com/WeveHQ/bridge/internal/verifier"
 	"github.com/WeveHQ/bridge/internal/wire"
 )
+
+func TestHealthz(t *testing.T) {
+	t.Parallel()
+
+	server, _ := newTestServer()
+	testServer := httptest.NewServer(server.Handler())
+	defer func() { testServer.Close() }()
+
+	response, err := http.Get(testServer.URL + healthz.Path)
+	if err != nil {
+		t.Fatalf("healthz request: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status code: %d", response.StatusCode)
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if string(body) != "OK" {
+		t.Fatalf("unexpected body: %s", string(body))
+	}
+}
 
 func TestDispatchRoundTrip(t *testing.T) {
 	t.Parallel()
