@@ -17,8 +17,6 @@ import (
 )
 
 func TestBridgeBinaryDispatchesRequests(t *testing.T) {
-	t.Parallel()
-
 	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		body, err := io.ReadAll(request.Body)
 		if err != nil {
@@ -84,8 +82,6 @@ func TestBridgeBinaryDispatchesRequests(t *testing.T) {
 }
 
 func TestBridgeBinaryRejectsDisallowedHost(t *testing.T) {
-	t.Parallel()
-
 	reached := false
 	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		reached = true
