@@ -1,4 +1,4 @@
-FROM golang:1.26.1-alpine AS build
+FROM golang:1.26.5-alpine AS build
 
 WORKDIR /src
 
@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o /out/weve-bridge ./cmd/bridge
 
-FROM alpine:3.22
+FROM alpine:3.24
 
 RUN apk add --no-cache wget && adduser -D -u 10001 bridge
 USER bridge
