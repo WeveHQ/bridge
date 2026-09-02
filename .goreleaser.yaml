@@ -16,9 +16,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X main.version={{.Version}}
-      - -X main.commit={{.Commit}}
-      - -X main.date={{.CommitDate}}
+      - -X github.com/WeveHQ/bridge/internal/build.Version={{.Version}}
     goos:
       - linux
       - darwin
