@@ -55,7 +55,7 @@ func (runner *Runner) sendHeartbeat(ctx context.Context) error {
 	}
 	runner.decorateAuth(request)
 
-	response, err := runner.client.Do(request)
+	response, err := runner.hubClient.Do(request)
 	if err != nil {
 		return err
 	}

@@ -12,6 +12,11 @@ import (
 )
 
 func mapErrorKind(err error) wire.ErrorKind {
+	var notAllowed hostNotAllowedError
+	if errors.As(err, &notAllowed) {
+		return wire.ErrorKindHostNotAllowed
+	}
+
 	if errors.Is(err, context.Canceled) {
 		return wire.ErrorKindCanceled
 	}

@@ -34,7 +34,7 @@ type Config struct {
 }
 
 type Runner struct {
-	client            *http.Client
+	hubClient         *http.Client
 	executor          *executor
 	token             string
 	hubURL            string
@@ -64,7 +64,7 @@ func NewRunner(cfg Config) *Runner {
 	}
 
 	return &Runner{
-		client:            client,
+		hubClient:         client,
 		executor:          newExecutor(cfg.Client, cfg.AllowedHosts),
 		token:             cfg.Token,
 		hubURL:            strings.TrimRight(cfg.HubURL, "/"),

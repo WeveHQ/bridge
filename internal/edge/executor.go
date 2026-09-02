@@ -21,12 +21,8 @@ type executor struct {
 }
 
 func newExecutor(client *http.Client, allowedHosts []string) *executor {
-	if client == nil {
-		client = http.DefaultClient
-	}
-
 	return &executor{
-		client:       client,
+		client:       newTargetClient(client, allowedHosts),
 		allowedHosts: allowedHosts,
 	}
 }
