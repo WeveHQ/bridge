@@ -75,7 +75,7 @@ func (runner *Runner) poll(ctx context.Context) (wire.PollResponse, bool, error)
 	}
 	runner.decorateAuth(request)
 
-	response, err := runner.client.Do(request)
+	response, err := runner.hubClient.Do(request)
 	if err != nil {
 		return wire.PollResponse{}, false, err
 	}
@@ -140,7 +140,7 @@ func (runner *Runner) postResponse(ctx context.Context, response wire.HttpRespon
 	}
 	runner.decorateAuth(request)
 
-	httpResponse, err := runner.client.Do(request)
+	httpResponse, err := runner.hubClient.Do(request)
 	if err != nil {
 		return err
 	}

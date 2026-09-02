@@ -162,13 +162,17 @@ livenessProbe:
 WEVE_BRIDGE_EDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal,jira.corp.internal
 ```
 
+For explicitly listed hosts, the edge also supports trusted legacy server certificates that contain only a Common Name and no Subject Alternative Name (SAN). The certificate must have a valid trusted chain, be within its validity period, permit TLS server authentication, and have a non-wildcard, non-IP Common Name that exactly matches the requested DNS hostname. Certificates with a SAN never use this fallback, including when the SAN does not match. Redirects are checked against the allow-list again for every destination.
+
+This compatibility behavior is automatic and is disabled when the allow-list is unset. It applies only to customer target traffic; TLS connections from the edge to the hub always use standard strict verification.
+
 ### Corporate proxy
 
 `HTTPS_PROXY` and `NO_PROXY` are honored via the Go stdlib. No extra configuration needed.
 
 ### TLS interception
 
-Point `SSL_CERT_FILE` at your CA bundle. The edge does not pin certificates — you can MITM it.
+Point `SSL_CERT_FILE` at your CA bundle. The edge does not pin certificates — you can MITM it. Custom roots supplied this way are also used when validating an allowlisted legacy CN-only target certificate; the Common Name fallback does not bypass chain validation.
 
 ## Troubleshooting
 
