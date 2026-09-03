@@ -72,11 +72,12 @@ Download from [Releases](https://github.com/WeveHQ/bridge/releases).
 > Optionally, you can verify the cosign signature and SLSA attestation before running.
 
 ```bash
+archive=weve-bridge_1.4.2_linux_x86_64.tar.gz
 cosign verify-blob \
-  --certificate weve-bridge_linux_amd64.pem \
-  --signature weve-bridge_linux_amd64.sig \
-  weve-bridge_linux_amd64
+  --bundle "${archive}.sigstore.json" \
+  "${archive}"
 
+tar -xzf "${archive}"
 ./weve-bridge edge
 ```
 
