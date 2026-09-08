@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Go 1.26.1+** — [install](https://go.dev/dl/)
+- **Go 1.26.5+** (see [go.mod](go.mod)) — [install](https://go.dev/dl/)
 - **Docker** and **Docker Compose** — required for e2e tests and container builds
 
 ## Building
@@ -45,10 +45,13 @@ go test -v ./integration
 E2E tests in `e2e/` use Docker Compose to run the full stack (hub, edge, token verifier, target HTTP server).
 
 ```bash
-go test -v ./e2e -tags docker
+go test -v -count=1 -tags docker ./e2e
 ```
 
-These require Docker and Docker Compose to be available.
+These require Docker and Docker Compose to be available. The TLS qualification
+suite uses generated certificates and independent target request counters; see
+the [lab guide](docs/tls-qualification.md) to run it or start a demonstration.
+For the preflight and pinning API, see the [protocol reference](docs/tls-protocol.md).
 
 ## Docker
 
@@ -61,11 +64,17 @@ docker build -t weve-bridge .
 ### Run via Docker Compose (e2e stack)
 
 ```bash
-cd e2e
-docker compose up
+WEVE_BRIDGE_HUB_PORT=18080 WEVE_BRIDGE_EDGE_TOKEN=local-test-token \
+  docker compose -f e2e/docker-compose.yml -p bridge-dev up -d --build
 ```
 
-This starts hub, edge, a mock token verifier, and a target HTTP server.
+Run this from the repository root. It starts the hub, edge, a mock token verifier,
+and a target HTTP server using disposable credentials. Tear it down with:
+
+```bash
+WEVE_BRIDGE_HUB_PORT=18080 WEVE_BRIDGE_EDGE_TOKEN=local-test-token \
+  docker compose -f e2e/docker-compose.yml -p bridge-dev down -v --remove-orphans
+```
 
 ### Hub Environment Variables
 

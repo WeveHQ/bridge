@@ -11,6 +11,8 @@ type dispatchState struct {
 	bridgeID        string
 	outboundTraceID string
 	request         wire.HttpRequest
+	operation       string
+	preflight       *wire.TLSPreflightRequest
 	pickedUp        chan struct{}
 	result          chan dispatchResult
 }
@@ -75,6 +77,8 @@ func (server *Server) dispatch(ctx context.Context, bridgeID string, request wir
 		bridgeID:        bridgeID,
 		outboundTraceID: request.OutboundTraceID,
 		request:         request.Req,
+		operation:       request.Operation,
+		preflight:       request.Preflight,
 		pickedUp:        make(chan struct{}),
 		result:          make(chan dispatchResult, 1),
 	}

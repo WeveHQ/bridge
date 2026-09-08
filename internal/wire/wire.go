@@ -23,14 +23,13 @@ type PollRequest struct {
 	BridgeVersion string `json:"bridgeVersion"`
 }
 
-type PollResponse struct {
-	OutboundTraceID string      `json:"outboundTraceId"`
-	Req             HttpRequest `json:"req"`
-}
+type PollResponse = DispatchRequest
 
 type DispatchRequest struct {
-	OutboundTraceID string      `json:"outboundTraceId"`
-	Req             HttpRequest `json:"req"`
+	Operation       string               `json:"operation,omitempty"`
+	Preflight       *TLSPreflightRequest `json:"preflight,omitempty"`
+	OutboundTraceID string               `json:"outboundTraceId"`
+	Req             HttpRequest          `json:"req"`
 }
 
 type DispatchReject struct {
@@ -43,6 +42,7 @@ type DispatchRejectError struct {
 }
 
 type HttpRequest struct {
+	TLSPolicy      *TLSPolicy    `json:"tlsPolicy,omitempty"`
 	Method         string        `json:"method"`
 	URL            string        `json:"url"`
 	Headers        []HeaderEntry `json:"headers"`
@@ -51,11 +51,12 @@ type HttpRequest struct {
 }
 
 type HttpResponse struct {
-	OutboundTraceID string        `json:"outboundTraceId"`
-	Status          uint32        `json:"status"`
-	Headers         []HeaderEntry `json:"headers"`
-	Meta            ExecutionMeta `json:"meta"`
-	Body            string        `json:"body"`
+	Preflight       *TLSPreflightResult `json:"preflight,omitempty"`
+	OutboundTraceID string              `json:"outboundTraceId"`
+	Status          uint32              `json:"status"`
+	Headers         []HeaderEntry       `json:"headers"`
+	Meta            ExecutionMeta       `json:"meta"`
+	Body            string              `json:"body"`
 }
 
 type HeaderEntry struct {
@@ -78,6 +79,7 @@ const (
 )
 
 type ExecutionError struct {
+	Code    string    `json:"code,omitempty"`
 	Kind    ErrorKind `json:"kind"`
 	Message string    `json:"message"`
 }
