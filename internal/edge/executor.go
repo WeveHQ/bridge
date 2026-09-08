@@ -33,6 +33,12 @@ func ExecuteRequest(outboundTraceID string, request wire.HttpRequest, allowedHos
 
 func (executor *executor) Execute(outboundTraceID string, request wire.HttpRequest) wire.HttpResponse {
 	startedAt := time.Now()
+	if err := request.TLSPolicy.Validate(request.URL); err != nil {
+		return newErrorResponse(outboundTraceID, startedAt, 0, invalidRequest(err))
+	}
+	if request.TLSPolicy != nil && len(executor.allowedHosts) == 0 {
+		return hostNotAllowedResponse(outboundTraceID, startedAt, 0, "")
+	}
 	requestBody, bodyError := decodeRequestBody(request.Body)
 	if bodyError != nil {
 		return newErrorResponse(outboundTraceID, startedAt, 0, bodyError)
@@ -61,7 +67,15 @@ func (executor *executor) Execute(outboundTraceID string, request wire.HttpReque
 		httpRequest.Header.Add(header.Name, header.Value)
 	}
 
-	httpResponse, err := executor.client.Do(httpRequest)
+	client := executor.client
+	if request.TLSPolicy != nil {
+		client, err = executor.pinnedClient(request.TLSPolicy)
+		if err != nil {
+			return newErrorResponse(outboundTraceID, startedAt, 0, err)
+		}
+		defer client.CloseIdleConnections()
+	}
+	httpResponse, err := client.Do(httpRequest)
 	if err != nil {
 		return newErrorResponse(outboundTraceID, startedAt, len(requestBody), err)
 	}
@@ -110,6 +124,7 @@ func hostNotAllowedResponse(outboundTraceID string, startedAt time.Time, bytesOu
 			BytesOut:        uint64(bytesOut),
 			Error: &wire.ExecutionError{
 				Kind:    wire.ErrorKindHostNotAllowed,
+				Code:    "host_not_allowed",
 				Message: fmt.Sprintf("host not allowed: %s", host),
 			},
 		},
@@ -125,7 +140,8 @@ func newErrorResponse(outboundTraceID string, startedAt time.Time, bytesOut int,
 			BytesOut:        uint64(bytesOut),
 			Error: &wire.ExecutionError{
 				Kind:    mapErrorKind(err),
-				Message: err.Error(),
+				Code:    errorCode(err),
+				Message: safeErrorMessage(err),
 			},
 		},
 	}

@@ -1,6 +1,6 @@
-# weve/bridge
+# Weve Bridge
 
-**Egress-only, zero-dependency agent to plug private data sources into Weve.**
+Connect HTTP APIs inside your network to Weve through an outbound connection.
 
 <div>
 
@@ -15,127 +15,155 @@
 
 </div>
 
----
+## How it works
 
-## What?
+You run the **edge** in your network. Weve operates the **hub**. The edge opens
+outbound HTTPS connections to the hub, receives requests, calls your internal
+APIs, and returns their responses. You do not need an inbound connection from
+Weve or a published container port for this traffic.
 
-Weve Bridge connects the Weve SaaS Cloud to data sources inside your network.
+Bridge forwards HTTP requests and responses; it does not provide a VPN or a
+SOCKS proxy. Set an explicit hostname allowlist to restrict the destinations
+Weve can request. **If the allowlist is unset, ordinary HTTP dispatch can reach
+any host accessible to the edge.** Use your network controls to restrict ports
+and destination IPs as needed.
 
-Run a single Go container on your network. It dials out to Weve over HTTPS/443 and waits. When Weve needs to query one of your private targets, the request travels back down that outbound connection. No inbound firewall rules.
+## Documentation
 
-Very slim, zero dependencies, ~10 MB.
+| Task | Guide |
+| --- | --- |
+| Install and operate the edge | This README |
+| Configure certificate trust, diagnose TLS, or approve a legacy certificate | [TLS operator guide](docs/tls.md) |
+| Verify a downloaded binary | [Release verification](docs/releases.md) |
+| Evaluate TLS behavior in an isolated environment | [TLS qualification lab](docs/tls-qualification.md) |
+| Build, test, or contribute | [Development](DEVELOPMENT.md) · [Contributing](CONTRIBUTING.md) |
+| Integrate with the hub API | [TLS protocol reference](docs/tls-protocol.md) |
 
-## How?
+Documentation describes this source tree. For an installed release, use the
+README and documentation at its release tag. TLS preflight and certificate
+pinning are new source-tree features: confirm a released edge version and
+corresponding Weve support before relying on them. They are not enabled by an
+edge upgrade alone.
 
-1. Edge dials out to Weve on 443 and parks long-polls.
-2. When Weve dispatches a request, the hub hands it down an already-open poll.
-3. Edge executes the HTTP call against your internal target.
-4. Response travels back up the same path.
+## Before you install
 
-Scoped to HTTP request/responses only. This NOT a VPN and NOT a SOCKS tunnel. Weve can only reach targets that are on your allow-list. All HTTP requests performed by this are logged for audit (both in stdout and in the Weve platform).
+You need:
 
-## Requirements
+- A Linux host or container runtime with access to the internal APIs you intend
+  to connect. Linux images support `amd64` and `arm64`.
+- An enrollment token and the HTTPS hub URL supplied by Weve for your Bridge.
+- Outbound access to that hub on TCP 443, directly or through your approved proxy.
+- DNS resolution and network access from the edge to each target's API hostname
+  and port. A product's web-console port may differ from its API port.
+- A trusted certificate chain and matching hostname for each HTTPS target. See
+  [TLS configuration](docs/tls.md) for private CAs and legacy certificates.
 
-- 1 vCPU / 256 MB recommended.
-- Linux container runtime (Docker, Kubernetes, ECS, Nomad) or a Linux host
-- Outbound HTTPS/443 to `*.weve.security`
-- An enrollment token from the Weve dashboard
-- Optional: corporate proxy via `HTTPS_PROXY`, custom CA via `SSL_CERT_FILE`
+1 vCPU and 256 MB RAM are a starting allocation; size and monitor the deployment
+for your request volume and payloads.
 
-## Enroll
-
-1. In the Weve dashboard, open **Settings → Connectors → Private Network Access → New bridge**.
-2. Copy the enrollment token.
-3. Set `WEVE_BRIDGE_EDGE_TOKEN`, `WEVE_BRIDGE_EDGE_HUB_URL` and start the container.
-4. The dashboard shows the bridge as `connected` within 60 seconds.
-
-Tokens are scoped to your tenant and a single bridge. Treat them as secrets.
+The enrollment token authenticates the edge to Weve. It is separate from the
+credentials Weve uses for your target API. Store it using your deployment's
+secret-management mechanism.
 
 ## Install
 
 ### Docker
 
+Create a Bridge in Weve and obtain its token and hub URL. Export
+`WEVE_BRIDGE_EDGE_TOKEN` and `WEVE_BRIDGE_EDGE_HUB_URL` in your environment, then
+select an image from [Releases](https://github.com/WeveHQ/bridge/releases).
+Replace `<version>` and the example hostname below with your chosen values.
+Use a versioned image or approved digest for a repeatable deployment.
+
 ```bash
+export WEVE_BRIDGE_IMAGE='ghcr.io/wevehq/weve-bridge:<version>'
+
 docker run -d --name weve-bridge \
-  -e WEVE_BRIDGE_EDGE_TOKEN=$WEVE_BRIDGE_EDGE_TOKEN \
-  -e WEVE_BRIDGE_EDGE_HUB_URL=$WEVE_BRIDGE_EDGE_HUB_URL \
-  -e WEVE_BRIDGE_EDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal \
-  ghcr.io/wevehq/weve-bridge:latest edge
+  --restart unless-stopped \
+  -e WEVE_BRIDGE_EDGE_TOKEN \
+  -e WEVE_BRIDGE_EDGE_HUB_URL \
+  -e WEVE_BRIDGE_EDGE_ALLOWED_HOSTS=api.corp.example \
+  "$WEVE_BRIDGE_IMAGE" edge
 ```
 
-> This same binary can act in _Hub Mode_ or _Edge Mode_. You want to run Edge Mode on your network. Weve runs Hub Mode in the cloud.
+The command runs **edge mode**. You do not need to install a hub in your tenant
+network. No host port is published by this example.
+
+Check startup and connection logs:
+
+```bash
+docker logs --tail 100 weve-bridge
+```
+
+A `connected to hub` message means a heartbeat was acknowledged. Verify the
+Bridge's connection status in Weve, then run the connector's health check to
+confirm access to the actual target.
 
 ### Binary
 
-Download from [Releases](https://github.com/WeveHQ/bridge/releases).
+Download the archive for your operating system and architecture from
+[Releases](https://github.com/WeveHQ/bridge/releases) and follow
+[release verification](docs/releases.md) before extracting it.
 
-> Optionally, you can verify the cosign signature and SLSA attestation before running.
+With the enrollment token, hub URL, and allowlist set in the environment:
 
 ```bash
-archive=weve-bridge_1.4.2_linux_x86_64.tar.gz
-cosign verify-blob \
-  --bundle "${archive}.sigstore.json" \
-  "${archive}"
-
-tar -xzf "${archive}"
 ./weve-bridge edge
 ```
 
-### Compiling from source
+For a persistent installation, run the binary under your host's service manager
+and configure it to restart after a failure or reboot. For source builds, see
+[Development](DEVELOPMENT.md#building).
 
-Requires Go 1.26+. Clone and build the `bridge` command:
+## Configuration
+
+The environment variables below configure edge mode. The CLI also accepts
+`--token`, `--hub-url`, and `--health-listen`; supplied values override their
+environment equivalents.
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `WEVE_BRIDGE_EDGE_TOKEN` | Yes | — | Enrollment token |
+| `WEVE_BRIDGE_EDGE_HUB_URL` | Yes | — | HTTPS hub URL supplied by Weve |
+| `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS` | Recommended | Unrestricted ordinary dispatch | Comma-separated target hostnames, without schemes, ports, or paths |
+| `WEVE_BRIDGE_EDGE_HEALTH_LISTEN_ADDR` | No | `0.0.0.0:8080` | Local health endpoint listener |
+| `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY` | No | `4` | Number of waiting polls maintained with the hub; not a hard limit on executing requests |
+| `WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS` | No | `15` | Heartbeat interval |
+| `WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS` | No | `30000` | Long-poll timeout in milliseconds |
+| `WEVE_BRIDGE_LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, or `error` |
+| `WEVE_BRIDGE_LOG_FORMAT` | No | `json` | `json` or `text` |
+| `HTTPS_PROXY` | No | — | Proxy for HTTPS HTTP-client traffic |
+| `HTTP_PROXY` | No | — | Proxy for plain HTTP target traffic |
+| `NO_PROXY` | No | — | Hosts and addresses that bypass the proxy |
+| `SSL_CERT_FILE` | No | System trust configuration | PEM CA bundle path inside the edge runtime; see [TLS configuration](docs/tls.md#private-certificate-authorities) |
+
+### Hostname allowlist
 
 ```bash
-git clone https://github.com/WeveHQ/bridge.git
-cd bridge
-go build -o weve-bridge ./cmd/bridge
-
-./weve-bridge edge
+WEVE_BRIDGE_EDGE_ALLOWED_HOSTS=api.corp.example,search.corp.example
 ```
 
-Cross-compile for Linux from any host by setting `GOOS=linux GOARCH=amd64` (or `arm64`).
+Matching is case-insensitive and exact by hostname. Entries do not support
+wildcards, URL paths, or port restrictions. List every intended hostname,
+including redirect destinations for ordinary HTTP requests. An allowed hostname
+is permission to connect; it does not establish certificate trust.
 
-## Configure
-
-All configuration is through environment variables.
-
-| Variable                              | Required | Default        | Purpose                                           |
-| ------------------------------------- | -------- | -------------- | ------------------------------------------------- |
-| `WEVE_BRIDGE_EDGE_TOKEN`              | yes      | —              | Enrollment token from the Weve dashboard          |
-| `WEVE_BRIDGE_EDGE_HUB_URL`            | yes      | —              | Bridge endpoint for your tenant (from dashboard)  |
-| `WEVE_BRIDGE_EDGE_HEALTH_LISTEN_ADDR` | no       | `0.0.0.0:8080` | Address the edge health endpoint listens on       |
-| `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`      | no       | —              | Comma-separated internal host allow-list          |
-| `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY`   | no       | `4`            | Concurrent in-flight requests this edge handles   |
-| `WEVE_BRIDGE_EDGE_HEARTBEAT_SECONDS`  | no       | `15`           | Heartbeat interval to the hub                     |
-| `WEVE_BRIDGE_EDGE_POLL_TIMEOUT_MS`    | no       | `30000`        | Long-poll timeout in milliseconds                 |
-| `WEVE_BRIDGE_LOG_LEVEL`               | no       | `info`         | `debug` / `info` / `warn` / `error`               |
-| `WEVE_BRIDGE_LOG_FORMAT`              | no       | `json`         | `json` / `text`                                   |
-| `HTTPS_PROXY`                         | no       | —              | Corporate egress proxy                            |
-| `NO_PROXY`                            | no       | —              | Proxy bypass list                                 |
-| `SSL_CERT_FILE`                       | no       | —              | Custom CA bundle for TLS-intercepting middleboxes |
+TLS preflight, explicit certificate pinning, and the legacy CN fallback require
+an explicit allowlist entry. Pinned requests do not follow redirects.
 
 ### Health checks
 
-Weve Bridge exposes `GET /healthz` returning HTTP `200` with body `OK` (text).
+`GET /healthz` returns HTTP 200 and `OK`. **This is a process liveness check.**
+It does not test hub connectivity, token validity, target access, or certificates.
+Use Weve connection status and connector health checks for those checks.
 
-- Port can be tweaked with `WEVE_BRIDGE_EDGE_HEALTH_LISTEN_ADDR` (default `0.0.0.0:8080`).
-- The container image includes `wget`, so you can use either HTTP probes or in-container `exec` probes.
+The image includes `wget`. To probe from inside the running container:
 
-e.g. Docker Compose:
-
-```yaml
-services:
-  edge:
-    image: ghcr.io/wevehq/weve-bridge:latest
-    command: ['edge']
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/healthz']
-      interval: 30s
-      timeout: 5s
-      retries: 3
+```bash
+docker exec weve-bridge wget -qO- http://127.0.0.1:8080/healthz
 ```
 
-e.g. Kubernetes HTTP probe:
+For Kubernetes, this liveness probe assumes the default listener:
 
 ```yaml
 livenessProbe:
@@ -144,56 +172,40 @@ livenessProbe:
     port: 8080
 ```
 
-e.g. Kubernetes exec probe:
-
-```yaml
-livenessProbe:
-  exec:
-    command:
-      - wget
-      - -qO-
-      - http://127.0.0.1:8080/healthz
-```
-
-### Allow-list
-
-`WEVE_BRIDGE_EDGE_ALLOWED_HOSTS` optional, but recommended (defense in depth). Any request whose target host is not on this list is rejected by the edge before it hits the network. Weve Cloud cannot bypass it. Leave it unset to allow all.
-
-```bash
-WEVE_BRIDGE_EDGE_ALLOWED_HOSTS=splunk.corp.internal,okta.corp.internal,jira.corp.internal
-```
-
-For explicitly listed hosts, the edge also supports trusted legacy server certificates that contain only a Common Name and no Subject Alternative Name (SAN). The certificate must have a valid trusted chain, be within its validity period, permit TLS server authentication, and have a non-wildcard, non-IP Common Name that exactly matches the requested DNS hostname. Certificates with a SAN never use this fallback, including when the SAN does not match. Redirects are checked against the allow-list again for every destination.
-
-This compatibility behavior is automatic and is disabled when the allow-list is unset. It applies only to customer target traffic; TLS connections from the edge to the hub always use standard strict verification.
-
-### Corporate proxy
-
-`HTTPS_PROXY` and `NO_PROXY` are honored via the Go stdlib. No extra configuration needed.
-
-### TLS interception
-
-Point `SSL_CERT_FILE` at your CA bundle. The edge does not pin certificates — you can MITM it. Custom roots supplied this way are also used when validating an allowlisted legacy CN-only target certificate; the Common Name fallback does not bypass chain validation.
+The health listener binds to all interfaces by default. Keep it reachable only
+by your local monitoring infrastructure; no public health port is required.
 
 ## Troubleshooting
 
-| Symptom                                                                                                                      | What it usually means / what to check                                                                                                                                                              |
-| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `heartbeat failed` or `poll failed` with `invalid token`                                                                     | The enrollment token was rejected by the hub/token verifier. Check that the token is current/correct.                                                                                              |
-| `heartbeat failed` or `poll failed` with `token verifier unavailable`                                                        | Hub-side token verification is failing or unreachable. This is usually a issue in the Weve side. Reach out to `engineering@weve.security`.                                                         |
-| `heartbeat failed` or `poll failed` with a TLS / certificate / x509 error                                                    | The edge could not establish TLS to the hub, proxy, or target. If you use TLS interception, set `SSL_CERT_FILE` to your CA bundle.                                                                 |
-| `407 Proxy Authentication Required`                                                                                          | The configured `HTTPS_PROXY` requires credentials the container/host does not have.                                                                                                                |
-| `poll rate limited by hub`                                                                                                   | The hub is enforcing its per-edge poll concurrency limit. The edge backs off automatically; Benign, but you should lower `WEVE_BRIDGE_EDGE_POLL_CONCURRENCY`.                                      |
-| `dispatch completed with execution error` and `host not allowed: <host>`                                                     | The target hostname is not in `WEVE_BRIDGE_EDGE_ALLOWED_HOSTS`. Matching is exact by hostname (no wildcards). Could be on purpose; if not, either add the host or remove the env var to allow all. |
-| `dispatch completed with execution error` and `errorKind=dns`, `timeout`, `connection_refused`, `tls`, or `connection_reset` | The edge received the dispatch but failed to reach the internal target. Check internal DNS, connectivity, deadlines, and the target's TLS chain.                                                   |
+| Symptom | What to check |
+| --- | --- |
+| Missing token or hub URL at startup | Ensure the required environment variables reach the container or service. |
+| `heartbeat failed` or `poll failed` with `invalid token` | Verify the enrollment token and intended hub URL with Weve. |
+| `token verifier unavailable` | Contact Weve support; hub-side token verification is unavailable. |
+| TLS error during heartbeat or polling | Check the hub hostname, outbound proxy, and CA trust. This is the edge-to-hub connection, not the target API. |
+| `407 Proxy Authentication Required` | Check the configured proxy's authentication requirements. |
+| `poll rate limited by hub` | The hub is limiting waiting polls. The edge backs off automatically; review poll concurrency with Weve. |
+| `host_not_allowed` | Confirm that the destination is intended, then add its exact hostname to the allowlist. |
+| Dispatch error `dns`, `connection_refused`, or `timeout` | Check target DNS, API port, routing, and firewall rules from the edge's network. |
+| Target certificate or pin error | Follow the [TLS troubleshooting guide](docs/tls.md#troubleshooting). |
 
-Run with `WEVE_BRIDGE_LOG_LEVEL=debug` for verbose diagnostics.
+The edge writes connection and dispatch logs to stdout. Dispatch records include
+an outbound trace ID, target hostname, timing, and execution outcome. Capture the
+trace ID, edge version, timestamp, and relevant error when requesting support.
+Review logs for sensitive information before sharing them publicly; do not
+include enrollment tokens, target credentials, or private keys.
 
-## Support
+## Upgrades
 
-- Status: [https://status.weve.security](https://status.weve.security)
-- Support: `engineering@weve.security`
+Read the release notes, select the new image version or binary, and restart the
+edge with your existing configuration. Verify the hub connection and connector
+health afterward. Coordinate features that require hub support with Weve. Before
+rolling back an edge, check whether any connector depends on a feature the older
+version cannot enforce, such as certificate pinning.
 
-## License
+## Support and security
 
-[Apache 2.0](LICENSE)
+- Service status: [status.weve.security](https://status.weve.security)
+- Operational support: `engineering@weve.security`
+- Vulnerability reporting: [Security policy](SECURITY.md)
+- Source license: [Apache 2.0](LICENSE)

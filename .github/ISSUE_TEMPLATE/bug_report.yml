@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: Bridge version
-      description: Output of `weve-bridge --version` or the Docker image tag
+      description: Release version, or Docker image tag and digest
       placeholder: "v1.2.3"
     validations:
       required: true

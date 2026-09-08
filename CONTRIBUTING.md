@@ -6,7 +6,7 @@ Thanks for your interest in contributing. This document covers the process for c
 
 Open a [bug report](https://github.com/WeveHQ/bridge/issues/new?template=bug_report.yml). Include:
 
-- Bridge version (`weve-bridge --version`)
+- Bridge release version, or Docker image tag and digest
 - How you're running it (Docker, binary, source)
 - Steps to reproduce
 - Expected vs actual behavior

@@ -40,6 +40,8 @@ func (server *Server) handlePoll(writer http.ResponseWriter, request *http.Reque
 	encodeJSON(writer, http.StatusOK, wire.PollResponse{
 		OutboundTraceID: dispatch.outboundTraceID,
 		Req:             dispatch.request,
+		Operation:       dispatch.operation,
+		Preflight:       dispatch.preflight,
 	})
 }
 
@@ -192,7 +194,12 @@ func (server *Server) handleDispatch(writer http.ResponseWriter, request *http.R
 			"bridgeId", bridgeID,
 			"error", err,
 		)
-		http.Error(writer, err.Error(), http.StatusBadRequest)
+		writeReject(writer, http.StatusBadRequest, "invalid_request", "invalid dispatch payload")
+		return
+	}
+
+	if err := dispatchRequest.Validate(); err != nil {
+		writeReject(writer, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
 

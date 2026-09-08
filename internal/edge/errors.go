@@ -12,6 +12,10 @@ import (
 )
 
 func mapErrorKind(err error) wire.ErrorKind {
+	var coded codedError
+	if errors.As(err, &coded) {
+		return coded.kind
+	}
 	var notAllowed hostNotAllowedError
 	if errors.As(err, &notAllowed) {
 		return wire.ErrorKindHostNotAllowed
@@ -27,6 +31,11 @@ func mapErrorKind(err error) wire.ErrorKind {
 	var dnsErr *net.DNSError
 	if errors.As(err, &dnsErr) {
 		return wire.ErrorKindDNS
+	}
+
+	var timeout net.Error
+	if errors.As(err, &timeout) && timeout.Timeout() {
+		return wire.ErrorKindTimeout
 	}
 
 	var opErr *net.OpError
