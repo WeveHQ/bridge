@@ -66,7 +66,7 @@ func legacyCommonNameTLSConfig(base *tls.Config, allowedHosts []string) *tls.Con
 	// Verification is performed below with x509.Verify so that a missing SAN can
 	// be handled after normal verification fails. Chain, time, and key-usage
 	// checks are never skipped.
-	config.InsecureSkipVerify = true //nolint:gosec -- replaced by the strict verifier below
+	config.InsecureSkipVerify = true //nolint:gosec // replaced by the strict verifier below
 	config.VerifyConnection = func(state tls.ConnectionState) error {
 		chains, _, err := verifyTargetCertificate(state, config.RootCAs, allowedHosts)
 		if err != nil {

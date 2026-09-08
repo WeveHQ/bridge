@@ -72,6 +72,7 @@ func verifyPinnedCertificate(state tls.ConnectionState, expected string) error {
 
 func (executor *executor) pinnedClient(policy *wire.TLSPolicy) (*http.Client, error) {
 	base, ok := executor.client.Transport.(*http.Transport)
+	//nolint:staticcheck // SA1019: reject legacy TLS dialers too, as they bypass certificate pinning.
 	if !ok || base.DialTLSContext != nil || base.DialTLS != nil {
 		return nil, invalidRequest(errors.New("custom TLS transport cannot enforce certificate pinning"))
 	}
@@ -82,7 +83,7 @@ func (executor *executor) pinnedClient(policy *wire.TLSPolicy) (*http.Client, er
 	transport.TLSClientConfig = &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		// The explicitly configured certificate pin replaces CA/name verification.
-		InsecureSkipVerify: true, //nolint:gosec -- verified below before HTTP is sent
+		InsecureSkipVerify: true, //nolint:gosec // verified below before HTTP is sent
 		VerifyConnection: func(state tls.ConnectionState) error {
 			return verifyPinnedCertificate(state, policy.CertificateSHA256)
 		},

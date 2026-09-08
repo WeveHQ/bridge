@@ -99,7 +99,7 @@ func (executor *executor) Preflight(ctx context.Context, trace string, request w
 	tlsConnection := tls.Client(connection, &tls.Config{
 		ServerName:         hostname,
 		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: true, //nolint:gosec -- diagnostic-only, verified independently below
+		InsecureSkipVerify: true, //nolint:gosec // diagnostic-only, verified independently below
 	})
 	err = tlsConnection.HandshakeContext(ctx)
 	if err != nil && mapErrorKind(err) == wire.ErrorKindUnknown {
