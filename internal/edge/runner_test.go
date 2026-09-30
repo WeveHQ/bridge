@@ -59,6 +59,60 @@ func TestExecuteRequestSuccess(t *testing.T) {
 	}
 }
 
+func TestExecuteRequestResponseBodySizeLimit(t *testing.T) {
+	tests := []struct {
+		name      string
+		bodySize  int
+		wantError bool
+	}{
+		{name: "accepts body at limit", bodySize: wire.MaxResponseBodyBytes},
+		{name: "rejects body over limit", bodySize: wire.MaxResponseBodyBytes + 1, wantError: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				_, _ = io.CopyN(writer, zeroReader{}, int64(test.bodySize))
+			}))
+			defer target.Close()
+
+			response := ExecuteRequest("ot_body_size", wire.HttpRequest{
+				Method:         http.MethodGet,
+				URL:            target.URL,
+				DeadlineUnixMs: uint64(time.Now().Add(time.Minute).UnixMilli()),
+			}, nil)
+
+			if test.wantError {
+				if response.Meta.Error == nil {
+					t.Fatal("expected execution error")
+				}
+				if response.Meta.Error.Message != "response body exceeds max size" {
+					t.Fatalf("unexpected execution error: %q", response.Meta.Error.Message)
+				}
+				return
+			}
+
+			if response.Meta.Error != nil {
+				t.Fatalf("unexpected execution error: %#v", response.Meta.Error)
+			}
+			body, err := base64.StdEncoding.DecodeString(response.Body)
+			if err != nil {
+				t.Fatalf("decode response body: %v", err)
+			}
+			if len(body) != test.bodySize {
+				t.Fatalf("response body size = %d, want %d", len(body), test.bodySize)
+			}
+		})
+	}
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(buffer []byte) (int, error) {
+	clear(buffer)
+	return len(buffer), nil
+}
+
 func TestExecuteRequestRejectsDisallowedHost(t *testing.T) {
 	t.Parallel()
 

@@ -81,11 +81,11 @@ func (executor *executor) Execute(outboundTraceID string, request wire.HttpReque
 	}
 	defer func() { _ = httpResponse.Body.Close() }()
 
-	responseBody, err := io.ReadAll(io.LimitReader(httpResponse.Body, wire.MaxBodyBytes+1))
+	responseBody, err := io.ReadAll(io.LimitReader(httpResponse.Body, wire.MaxResponseBodyBytes+1))
 	if err != nil {
 		return newErrorResponse(outboundTraceID, startedAt, len(requestBody), err)
 	}
-	if len(responseBody) > wire.MaxBodyBytes {
+	if len(responseBody) > wire.MaxResponseBodyBytes {
 		return newErrorResponse(outboundTraceID, startedAt, len(requestBody), errors.New("response body exceeds max size"))
 	}
 

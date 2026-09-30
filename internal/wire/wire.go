@@ -3,7 +3,12 @@ package wire
 import "encoding/json"
 
 const (
-	MaxBodyBytes           = 8 * 1024 * 1024
+	MaxRequestBodyBytes = 8 * 1024 * 1024
+
+	// MaxResponseBodyBytes leaves more than 10 MiB in the infrastructure's 32 MiB
+	// response-envelope limit for base64 expansion, headers, and metadata.
+	MaxResponseBodyBytes = 16 * 1024 * 1024
+
 	V1PathPrefix           = "/v1"
 	PollPath               = V1PathPrefix + "/poll"
 	HeartbeatPath          = V1PathPrefix + "/heartbeat"

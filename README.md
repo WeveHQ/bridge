@@ -151,6 +151,13 @@ is permission to connect; it does not establish certificate trust.
 TLS preflight, explicit certificate pinning, and the legacy CN fallback require
 an explicit allowlist entry. Pinned requests do not follow redirects.
 
+### Payload limits
+
+Decoded request bodies are limited to **8 MiB** and decoded target response
+bodies are limited to **16 MiB**. These limits apply before the bodies are
+base64-encoded for relay between the Hub and edge. Bodies above the applicable
+limit are rejected rather than truncated.
+
 ### Health checks
 
 `GET /healthz` returns HTTP 200 and `OK`. **This is a process liveness check.**

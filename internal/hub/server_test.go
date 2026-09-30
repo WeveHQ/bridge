@@ -168,6 +168,36 @@ func TestDuplicateResponseIsIdempotent(t *testing.T) {
 	postResponse(t, testServer.URL, token, response)
 }
 
+func TestResponseBodySizeLimit(t *testing.T) {
+	server, token := newTestServer()
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	tests := []struct {
+		name       string
+		bodySize   int
+		wantStatus int
+	}{
+		{name: "accepts body at limit", bodySize: wire.MaxResponseBodyBytes, wantStatus: http.StatusNotFound},
+		{name: "rejects body over limit", bodySize: wire.MaxResponseBodyBytes + 1, wantStatus: http.StatusRequestEntityTooLarge},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := postRawResponse(t, testServer.URL, token, wire.HttpResponse{
+				OutboundTraceID: "ot_body_size",
+				Body:            base64.StdEncoding.EncodeToString(make([]byte, test.bodySize)),
+			})
+			defer func() { _ = response.Body.Close() }()
+
+			if response.StatusCode != test.wantStatus {
+				body, _ := io.ReadAll(response.Body)
+				t.Fatalf("response status = %d, want %d: %s", response.StatusCode, test.wantStatus, body)
+			}
+		})
+	}
+}
+
 func TestAuthenticateEdgeReturnsServiceUnavailableWhenVerifierFails(t *testing.T) {
 	t.Parallel()
 
