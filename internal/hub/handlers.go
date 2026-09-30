@@ -122,12 +122,12 @@ func (server *Server) handleResponse(writer http.ResponseWriter, request *http.R
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if size > wire.MaxBodyBytes {
+	if size > wire.MaxResponseBodyBytes {
 		server.logger.Warn("response rejected because body is too large",
 			"bridgeId", claims.BridgeID,
 			"outboundTraceId", outboundTraceID,
 			"bodySize", size,
-			"maxBodyBytes", wire.MaxBodyBytes,
+			"maxBodyBytes", wire.MaxResponseBodyBytes,
 		)
 		server.completeWithReject(claims.BridgeID, outboundTraceID, wire.BridgeResponseTooLarge, "response body exceeds max size")
 		http.Error(writer, "response body exceeds max size", http.StatusRequestEntityTooLarge)
@@ -213,12 +213,12 @@ func (server *Server) handleDispatch(writer http.ResponseWriter, request *http.R
 		writeReject(writer, http.StatusBadRequest, wire.BridgeResponseRejected, err.Error())
 		return
 	}
-	if size > wire.MaxBodyBytes {
+	if size > wire.MaxRequestBodyBytes {
 		server.logger.Warn("dispatch rejected because body is too large",
 			"bridgeId", bridgeID,
 			"outboundTraceId", dispatchRequest.OutboundTraceID,
 			"bodySize", size,
-			"maxBodyBytes", wire.MaxBodyBytes,
+			"maxBodyBytes", wire.MaxRequestBodyBytes,
 		)
 		writeReject(writer, http.StatusRequestEntityTooLarge, wire.BridgeRequestTooLarge, "request body exceeds max size")
 		return
